@@ -2,7 +2,8 @@
 
 | เอกสาร                                             | อ่านเพื่ออะไร                                                                                   |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [SETUP-GUIDE.md](SETUP-GUIDE.md)                   | ตั้งค่าทีละเมนู พร้อมค่าที่ใส่ เหตุผล ภาพ UI และวิธีตรวจปัญหา                                   |
+| [SETUP-GUIDE.md](SETUP-GUIDE.md)                   | ค่าจำเป็น 7 ขั้นตอน อ่านก่อนตั้งค่า                                                             |
+| [SETUP-REFERENCE.md](SETUP-REFERENCE.md)           | field, ภาพ UI และ troubleshooting แบบละเอียด ใช้อ้างอิงเมื่อสงสัย                               |
 | [FEATURES.md](FEATURES.md)                         | เข้าใจ Realm, IdP, JWT grant, clients, service account, roles/scopes/mappers, keys และ sessions |
 | [API-MODE-SETTINGS.json](API-MODE-SETTINGS.json)   | ดู settings reference แบบไม่มี secrets; ไม่ใช่ไฟล์ import realm                                 |
 | [API-MODE-POC.md](API-MODE-POC.md)                 | ภาพรวมการทำงานของ JWT grant และ token POST                                                      |
@@ -22,7 +23,15 @@
 - อายุ access token 300 วินาที ไม่ถูกจำกัดเหลือ 60 วินาทีตาม assertion
 - assertion เดิมใช้ซ้ำแล้วได้ HTTP 400
 - introspection active ก่อน revoke และ inactive หลัง revoke
-- service-account client_credentials สำเร็จ
+- service-account client_credentials สำเร็จ โดยใช้ manage-users + view-clients ไม่มี query-users
 - Admin API templates ทั้ง 12 ที่ C ใช้ผ่าน: ค้นหา/สร้าง/ปรับผู้ใช้, อ่าน/ผูก/ถอน identity link, อ่าน clients/roles, อ่าน/เพิ่ม/ถอน/effective role mappings
 
 การทดสอบนี้ไม่แก้ realm ของคุณ ไม่อัปเดต .env จริง และไม่แทน end-to-end Login ของแอปหลังคุณตั้งค่าเองครบแล้ว
+
+## ผลตรวจความจำเป็น
+
+- realm จริงยังมีเฉพาะ built-ins ไม่มี app clients/IdP ให้ลบ จึงไม่แก้ settings ของผู้ใช้
+- ลด query-users ออกจากทั้ง service-account roles และ role scope หลังทดสอบครบ 12 Admin APIs ผ่าน
+- A/B/C ใช้ default profile/email เท่านั้น; sync ใช้ default roles เท่านั้น
+- ย้ายการตั้งค่า Login screen, browser sessions, keys และตัวเลือก diagnostic ออกจากขั้นตอนหลัก ไปไว้เป็นคำอธิบายอ้างอิง
+- คง 4 clients และ 8 mappers เพราะโค้ดปัจจุบันใช้ทั้งหมด การตัด client app-control ต้องแก้ flow bootstrap ของ C ก่อน

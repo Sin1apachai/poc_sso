@@ -3,7 +3,6 @@
   "idp": {
     "issuer": "http://localhost:4003/oidc",
     "jwksUrl": "http://app-control:4003/oidc/jwks",
-    "jwtAuthorizationGrantEnabled": "true",
     "jwtAuthorizationGrantAssertionReuseAllowed": "false",
     "jwtAuthorizationGrantMaxAllowedAssertionExpiration": "60",
     "jwtAuthorizationGrantAssertionSignatureAlg": "RS256",
@@ -16,7 +15,6 @@
       "standardFlowEnabled": false,
       "jwtGrantEnabled": "true",
       "allowedIdp": "app-control",
-      "tokenLifetimeOverride": null,
       "mappers": [
         {
           "name": "control-permissions",
@@ -36,14 +34,13 @@
       "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
-      "defaultClientScopes": ["profile", "email", "roles"],
+      "defaultClientScopes": ["profile", "email"],
       "roleScope": ["app-a/read", "app-a/write", "app-a/delete"]
     },
     "app-b": {
       "standardFlowEnabled": false,
       "jwtGrantEnabled": "true",
       "allowedIdp": "app-control",
-      "tokenLifetimeOverride": null,
       "mappers": [
         {
           "name": "control-source-idp",
@@ -63,14 +60,13 @@
       "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
-      "defaultClientScopes": ["profile", "email", "roles"],
+      "defaultClientScopes": ["profile", "email"],
       "roleScope": ["app-b/read", "app-b/write", "app-b/delete"]
     },
     "app-control": {
       "standardFlowEnabled": false,
       "jwtGrantEnabled": "true",
       "allowedIdp": "app-control",
-      "tokenLifetimeOverride": null,
       "mappers": [
         {
           "name": "control-source-idp",
@@ -86,7 +82,7 @@
       "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
-      "defaultClientScopes": ["profile", "email", "roles"],
+      "defaultClientScopes": ["profile", "email"],
       "roleScope": []
     },
     "app-control-sync": {
@@ -97,20 +93,12 @@
       "serviceAccountsEnabled": true,
       "fullScopeAllowed": false,
       "jwtGrantEnabled": "false",
-      "defaultClientScopes": ["profile", "email", "roles"],
-      "serviceAccountRoles": [
-        "realm-management/query-users",
-        "realm-management/manage-users",
-        "realm-management/view-clients"
-      ],
-      "roleScope": [
-        "realm-management/query-users",
-        "realm-management/manage-users",
-        "realm-management/view-clients"
-      ]
+      "defaultClientScopes": ["roles"],
+      "serviceAccountRoles": ["realm-management/manage-users", "realm-management/view-clients"],
+      "roleScope": ["realm-management/manage-users", "realm-management/view-clients"]
     }
   },
   "realmAccessTokenSeconds": 300,
   "referenceOnly": true,
-  "note": "Reference configuration validated on a separate Keycloak 26.8.1 instance; no automatic import and no client secrets."
+  "note": "Reference only, not an import file. Minimal scopes/roles validated on isolated Keycloak 26.8.1 with all 12 Admin API templates; no client secrets."
 }

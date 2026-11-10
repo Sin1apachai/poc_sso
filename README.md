@@ -13,7 +13,8 @@
 
 ## คู่มือตั้งค่า Keycloak
 
-- [ตั้งค่าทีละขั้นพร้อมภาพ UI และเหตุผล](docs/keycloak/SETUP-GUIDE.md)
+- [ตั้งค่าเฉพาะที่จำเป็น 7 ขั้นตอน](docs/keycloak/SETUP-GUIDE.md)
+- [Field และภาพ UI รายละเอียด](docs/keycloak/SETUP-REFERENCE.md)
 - [Feature ที่ใช้และเหตุผลการออกแบบ](docs/keycloak/FEATURES.md)
 
 ภาพใช้ Keycloak 26.8.1 ใน environment ตัวอย่างแยกจาก realm ของคุณ ค่า config อ้างอิงไม่มี secrets และไม่ import อัตโนมัติ

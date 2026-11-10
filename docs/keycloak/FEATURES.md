@@ -72,13 +72,14 @@ Client app-control-sync ใช้ client_credentials เพื่อให้ C 
 
 | Role         | โค้ดใช้เพื่ออะไร                                                   |
 | ------------ | ------------------------------------------------------------------ |
-| query-users  | ค้นหาผู้ใช้ตาม email                                               |
 | manage-users | สร้าง/ปรับบัญชี ผูกหรือถอน federated identity และจัด role mappings |
 | view-clients | อ่าน client IDs และ role definitions                               |
 
+ไม่ต้องเพิ่ม query-users ใน config ที่ทดสอบบน 26.8.1 นี้ เพราะ manage-users ครอบคลุมการค้นหาที่ C ใช้แล้ว ทดสอบ Admin API ทั้ง 12 เส้นผ่านโดยไม่มี role นี้
+
 ไม่ต้องให้ realm-admin เพราะจะได้อำนาจจัดการทั้ง realm เกินงานนี้ และไม่ต้องให้ manage-clients เพราะ C ไม่ได้สร้าง/แก้ client configuration ตอน sync
 
-**สองชั้นที่ต้องผ่าน:** role ต้องถูก assign ให้ service-account user และต้องอยู่ใน role scope ของ client ด้วย ไม่ใช่แค่เห็น role ในหน้า service account แล้ว token จะมีเสมอ เราปิด Full scope allowed และใส่ scope เฉพาะสาม role นี้
+**สองชั้นที่ต้องผ่าน:** role ต้องถูก assign ให้ service-account user และต้องอยู่ใน role scope ของ client ด้วย ไม่ใช่แค่เห็น role ในหน้า service account แล้ว token จะมีเสมอ เราปิด Full scope allowed และใส่ scope เฉพาะสอง role นี้
 
 manage-users ยังเป็นสิทธิ์ที่กว้างพอจัดการผู้ใช้ใน realm; ชุดนี้เป็นสิทธิ์ที่ใช้กับ PoC ไม่ได้อ้างว่าเป็นการจำกัด admin แบบละเอียดที่สุดสำหรับระบบจริง
 
@@ -118,16 +119,16 @@ Role assignment บอกว่าผู้ใช้มีสิทธิ์อ�
 
 ตั้ง Full scope allowed = Off เพื่อไม่เปิดกว้างให้ทุก role ที่ผู้ใช้มี แล้วกำหนด:
 
-| Client           | Role scope ที่ให้                                        |
-| ---------------- | -------------------------------------------------------- |
-| app-a            | app-a/read, app-a/write, app-a/delete                    |
-| app-b            | app-b/read, app-b/write, app-b/delete                    |
-| app-control      | ไม่ต้องใส่ application roles; ใช้ตรวจสถานะ SSO ของ C     |
-| app-control-sync | realm-management/query-users, manage-users, view-clients |
+| Client           | Role scope ที่ให้                                    |
+| ---------------- | ---------------------------------------------------- |
+| app-a            | app-a/read, app-a/write, app-a/delete                |
+| app-b            | app-b/read, app-b/write, app-b/delete                |
+| app-control      | ไม่ต้องใส่ application roles; ใช้ตรวจสถานะ SSO ของ C |
+| app-control-sync | realm-management/manage-users, view-clients          |
 
 เพิ่ม read/write/delete ใน scope ของ app-a ไม่ได้ให้ผู้ใช้ทุกคนมีสิทธิ์เหล่านั้น ผู้ใช้ยังต้องถูก assign ผ่าน C
 
-ให้ default client scopes profile, email, roles อยู่ด้วย: email mapper ให้ email ที่โค้ดต้องใช้; roles scope ให้ข้อมูล roles ของ service account ใน Admin token การถอด roles ออกอาจทำให้ service token ไม่มี resource_access แล้ว Admin API ตอบ 403
+สำหรับ app-a/app-b/app-control ใช้ default scopes profile กับ email ตาม scope ที่โค้ดร้องขอ ส่วน app-control-sync ใช้เฉพาะ roles เพื่อให้ Admin token มี resource_access ไม่ต้องใส่ profile/email ใน service-account token และไม่ต้องใส่ roles ในสาม user-token clients ที่มี dedicated permission mapper อยู่แล้ว
 
 ## 9. Protocol mappers: แปลงข้อมูลเป็น claims
 
