@@ -1,55 +1,53 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { checkReadiness } = require("../app-control/src/sso/sso-readiness");
-const base = { url: "http://example.test/discovery", issuer: "http://expected.test" };
-test("three failed connection checks; only two backoff intervals", async () => {
+const { retryBootstrap } = require("../app-control/src/sso/sso-readiness");
+test("three failed real bootstrap attempts, only two backoffs", async () => {
   const attempts = [],
     delays = [];
-  let calls = 0;
-  const r = await checkReadiness({
-    ...base,
-    onAttempt: async (n) => attempts.push(n),
-    sleep: async (n) => delays.push(n),
-    fetcher: async () => {
-      calls++;
+  const result = await retryBootstrap({
+    attempt: async () => {
       throw Error("offline");
     },
+    onAttempt: async (n) => attempts.push(n),
+    sleep: async (ms) => delays.push(ms),
   });
-  assert.equal(calls, 3);
+  assert.equal(result.ok, false);
   assert.deepEqual(attempts, [1, 2, 3]);
   assert.deepEqual(delays, [2000, 5000]);
-  assert.deepEqual(r, { ok: false, attempts: 3, reason: "unavailable" });
 });
-test("temporary error then success stops retries", async () => {
-  let calls = 0;
-  const r = await checkReadiness({
-    ...base,
+test("successful token bootstrap stops retrying and returns verified result", async () => {
+  let n = 0;
+  const token = { payload: { jti: "verified-result" } };
+  const result = await retryBootstrap({
+    attempt: async () => {
+      if (++n === 1) throw Error("offline");
+      return token;
+    },
     sleep: async () => {},
-    fetcher: async () =>
-      ++calls === 1
-        ? { ok: false, status: 503 }
-        : { ok: true, json: async () => ({ issuer: base.issuer }) },
   });
-  assert.equal(calls, 2);
-  assert.equal(r.ok, true);
+  assert.equal(n, 2);
+  assert.equal(result.value, token);
+  assert.equal(result.ok, true);
 });
-test("permission/configuration error is not retried", async () => {
-  let calls = 0;
-  const r = await checkReadiness({
-    ...base,
-    fetcher: async () => {
-      calls++;
-      return { ok: false, status: 403 };
+test("client/proof configuration rejection stops immediately", async () => {
+  let n = 0;
+  const result = await retryBootstrap({
+    attempt: async () => {
+      n++;
+      throw Object.assign(Error("invalid proof"), { retryable: false, reason: "configuration" });
     },
   });
-  assert.equal(calls, 1);
-  assert.equal(r.reason, "configuration");
+  assert.equal(n, 1);
+  assert.equal(result.reason, "configuration");
 });
-test("wrong issuer cannot become ready", async () => {
-  const r = await checkReadiness({
-    ...base,
-    fetcher: async () => ({ ok: true, json: async () => ({ issuer: "http://wrong.test" }) }),
+test("invalid JSON token response cannot become successful", async () => {
+  let n = 0;
+  const result = await retryBootstrap({
+    attempt: async () => {
+      n++;
+      throw SyntaxError("invalid response");
+    },
   });
-  assert.equal(r.ok, false);
-  assert.equal(r.attempts, 1);
+  assert.equal(n, 1);
+  assert.equal(result.ok, false);
 });

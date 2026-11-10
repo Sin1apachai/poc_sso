@@ -1,0 +1,81 @@
+.sso-token-menu {
+  padding: 24px;
+  background: var(--pf-v5-global--BackgroundColor--100, white);
+  color: var(--pf-v5-global--Color--100, #151515);
+}
+.sso-token-menu h1 {
+  font-size: 28px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.sso-token-menu p {
+  margin: 8px 0 16px;
+}
+.sso-token-note {
+  color: var(--pf-v5-global--Color--200, #555);
+}
+.sso-token-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 20px 0;
+}
+.sso-token-menu input,
+.sso-token-menu select,
+.sso-token-menu button {
+  font: inherit;
+  padding: 7px 10px;
+  border: 1px solid #8a8d90;
+  border-radius: 3px;
+  background: var(--pf-v5-global--BackgroundColor--100, white);
+  color: inherit;
+}
+.sso-token-menu input {
+  min-width: 250px;
+}
+.sso-token-menu button {
+  cursor: pointer;
+}
+.sso-token-menu button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.sso-token-table {
+  overflow-x: auto;
+}
+.sso-token-menu table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.sso-token-menu th,
+.sso-token-menu td {
+  padding: 12px;
+  border-bottom: 1px solid #d2d2d2;
+  vertical-align: top;
+  white-space: nowrap;
+}
+.sso-token-menu code {
+  font-size: 12px;
+}
+.sso-token-menu small {
+  display: block;
+  font-size: 11px;
+  opacity: 0.7;
+}
+.sso-token-active {
+  color: #0f5320;
+  background: #e7f4e4;
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+.sso-token-error {
+  color: #b1380b;
+}
+.sso-token-pagination {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-top: 20px;
+}

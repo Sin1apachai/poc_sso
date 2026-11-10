@@ -32,9 +32,6 @@ function browserIdentity(req, res, next) {
       maxAge: 30 * 24 * 3600000,
     });
   }
-  if (cookies.sso_lab_browser) {
-    res.clearCookie("sso_lab_browser", { httpOnly: true, sameSite: "lax", secure: false });
-  }
   next();
 }
 module.exports = { browserIdentity };

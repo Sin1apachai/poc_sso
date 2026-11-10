@@ -57,7 +57,7 @@ async function createRoutes() {
     if (!req.session.ssoChecked && !req.session.accessDenied && !req.session.loginNotice) {
       return sso.startSso(req, res, { silent: true });
     }
-    // Consume explicit Login errors once. Discard legacy persistent denial flags.
+    // Show explicit Login errors once.
     const denied = req.session.accessDenied;
     delete req.session.accessDenied;
     const accessDenied = denied?.explicit
@@ -96,7 +96,6 @@ async function createRoutes() {
     const expiresAt = Date.now() + 60 * 60 * 1000;
     req.session.local = {
       userId: user.id,
-      email: user.email,
       expiresAt,
       appToken: await issueAppToken({ userId: user.id, mode: "local", expiresAt }),
     };

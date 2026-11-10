@@ -8,7 +8,6 @@
   const modal = document.getElementById("sso-modal");
   const message = document.getElementById("sso-modal-message");
   const retry = document.getElementById("sso-retry");
-  const pending = ["checking", "ready", "redirecting"];
   let state = { status: panel.dataset.status, attempts: 0, message: panel.dataset.message },
     inFlight = false,
     leaving = false,
@@ -22,7 +21,7 @@
     }
   }
   function render() {
-    retry.disabled = pending.includes(state.status);
+    retry.disabled = state.status === "checking";
     label.textContent = state.label;
     note.textContent = state.note || "";
     note.hidden = !state.note;
@@ -30,10 +29,6 @@
     if (state.status === "failed" && !failedNotified) {
       failedNotified = true;
       show(state.message || failed);
-    }
-    if (state.status === "ready" && !leaving) {
-      leaving = true;
-      document.getElementById("sso-continue").requestSubmit();
     }
   }
   async function refresh() {
@@ -47,7 +42,7 @@
       throw new Error("Status unavailable");
     }
     const fresh = await response.json();
-    const formToken = document.querySelector('#sso-continue input[name="csrf"]').value;
+    const formToken = document.querySelector('input[name="csrf"]').value;
     if (fresh.csrf !== formToken) {
       // Another tab signed in or rotated the session. Reload the identity and forms together.
       leaving = true;
@@ -70,7 +65,7 @@
     } finally {
       inFlight = false;
       if (!leaving) {
-        setTimeout(poll, pending.includes(state.status) ? 1000 : 10000);
+        setTimeout(poll, state.status === "checking" ? 1000 : 10000);
       }
     }
   }
@@ -86,14 +81,14 @@
           window.location.assign(link.href);
           return;
         }
-        show(state.message || (pending.includes(state.status) ? waiting : failed));
+        show(state.message || (state.status === "checking" ? waiting : failed));
       } catch {
         show("ตรวจสอบสถานะ SSO ไม่ได้ กรุณาลองใหม่หรือติดต่อผู้ดูแลระบบ");
       }
     }),
   );
   if (panel.dataset.notice === "1") {
-    show(state.message || (pending.includes(state.status) ? waiting : failed));
+    show(state.message || (state.status === "checking" ? waiting : failed));
   }
   poll();
 })();

@@ -26,9 +26,11 @@ async function start() {
   ];
   app.use(
     helmet({
+      xFrameOptions: false,
       contentSecurityPolicy: {
         directives: {
           formAction: [...new Set(formOrigins)],
+          frameAncestors: ["'self'", "http://localhost:4003"],
         },
       },
     }),

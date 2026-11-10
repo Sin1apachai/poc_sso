@@ -6,9 +6,13 @@ psql -v ON_ERROR_STOP=1 \
   --dbname "$POSTGRES_DB" \
   --set=app_a_password="$APP_A_DB_PASSWORD" \
   --set=app_b_password="$APP_B_DB_PASSWORD" <<'SQL'
-CREATE USER app_a_user WITH PASSWORD :'app_a_password';
-CREATE DATABASE app_a OWNER app_a_user;
+SELECT format('CREATE ROLE app_a_user LOGIN PASSWORD %L', :'app_a_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_a_user')
+\gexec
+SELECT 'CREATE DATABASE app_a OWNER app_a_user' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname='app_a')
+\gexec
 
-CREATE USER app_b_user WITH PASSWORD :'app_b_password';
-CREATE DATABASE app_b OWNER app_b_user;
+SELECT format('CREATE ROLE app_b_user LOGIN PASSWORD %L', :'app_b_password') WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname='app_b_user')
+\gexec
+SELECT 'CREATE DATABASE app_b OWNER app_b_user' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname='app_b')
+\gexec
 SQL

@@ -1,0 +1,13 @@
+{
+  "testedAt": "2026-11-10T09:47:37.995Z",
+  "keycloak": "26.8.1",
+  "mode": "real Admin Console + A/B/C",
+  "tests": [
+    "Token metadata API rejects anonymous requests and authenticated users without realm-admin",
+    "One shared C/A/B token appears with correct metadata; filter/pagination work; response has no raw JWT and realm users remain zero",
+    "Native SSO Tokens navigation opens the real table; client filter and search work in Admin Console",
+    "Existing Clients screen still works after adding the custom menu",
+    "Logout C removes the shared C/A/B token from the menu without creating permanent history",
+    "A token disappears from the API and Admin Console after real expiry; cache does not become a permanent issuance history"
+  ]
+}

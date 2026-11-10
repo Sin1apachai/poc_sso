@@ -8,7 +8,11 @@
     "format:check": "node scripts/format-templates.cjs --check && prettier --check .",
     "check": "node scripts/check-source.cjs",
     "test": "node scripts/test-sso-readiness.cjs && node scripts/test-ab-readiness.cjs && node scripts/test-signing-keys.cjs",
-    "keys:generate": "node scripts/generate-keys.cjs"
+    "keys:generate": "node scripts/generate-keys.cjs",
+    "lab:prepare": "node scripts/setup-temporary-sso.cjs --prepare-env",
+    "lab:configure": "node scripts/setup-temporary-sso.cjs",
+    "test:integration": "node scripts/test-temporary-sso.cjs",
+    "test:token-menu": "node scripts/test-token-menu.cjs"
   },
   "devDependencies": {
     "js-beautify": "1.15.4",

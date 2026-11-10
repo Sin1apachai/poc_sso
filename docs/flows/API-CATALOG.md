@@ -1,131 +1,144 @@
-# HTTP routes และ Keycloak API
+# API ของ PoC จริง และจำนวน Request
 
-[กลับรายการ flow](README.md) · [Diagram แต่ละ flow](LOGIN-AND-SESSION.md)
+อ้างอิง `app/src/routes.js`, `app-control/src/routes.js` และ `keycloak/src/main/java/lab/sso/TemporarySsoResource.java` ไม่ใช่ routes ของตัวจำลอง
 
-จำนวนด้านล่างเป็น **method + path template** ไม่ใช่จำนวน HTTP requests ต่อการใช้งาน
+1 endpoint = method + path template Response ไม่นับเป็น request ใหม่ Redirect จะเกิด request เพิ่มเมื่อ browser ตาม URL จำนวนครั้งขึ้นกับ cache, polling และ retry
 
-## A/B: 14 routes ต่อระบบ
+## A/B — 14 routes ต่อระบบ
 
-Base URL A = `http://localhost:4001`; B = `http://localhost:4002`
+| Method/path                  | หน้าที่                                                               |
+| ---------------------------- | --------------------------------------------------------------------- |
+| `GET /health`                | ตรวจฐานข้อมูลและสถานะระบบ                                             |
+| `GET /login/local`           | กลับ Login โดยไม่เริ่ม silent SSO ซ้ำ                                 |
+| `GET /login`                 | หน้า Login และ modal ที่แจ้งเพียงครั้งเดียว; ครั้งแรกอาจ silent check |
+| `POST /login`                | ตรวจ local password สร้าง app token/session                           |
+| `GET /sso`                   | ตรวจพร้อมแล้วเปิดคำขอ SSO C                                           |
+| `POST /sso/preflight`        | ปุ่ม SSO ตรวจพร้อมและส่ง URL C กลับเป็น JSON                          |
+| `GET /sso/connectivity`      | อ่านความคืบหน้า retry ระหว่างกด SSO                                   |
+| `GET /sso/callback`          | รับ error พร้อม state จาก C/หน้าส่งต่อ                                |
+| `POST /sso/callback`         | รับ JWT จาก Keycloak ตรวจ binding/สิทธิ์/บัญชี และสร้าง app session   |
+| `GET /session/logout-events` | SSE สำหรับแจ้ง SSO logout โดยไม่ polling เพิ่ม                        |
+| `GET /session/heartbeat`     | ตรวจ local หรือ SSO session; SSO ใช้ custom introspection ตามเงื่อนไข |
+| `POST /logout/control`       | รับ C signed logout notification ล้าง SSO sessions                    |
+| `GET /`                      | หน้าหลักที่ตรวจ authentication                                        |
+| `POST /logout`               | ออกเฉพาะระบบนี้ ตรวจ CSRF และล้าง cookie/session                      |
 
-| #   | Method | Path                   | ผู้เรียก / ชนิด              | ทำอะไร                                                            |
-| --- | ------ | ---------------------- | ---------------------------- | ----------------------------------------------------------------- |
-| A01 | GET    | /health                | Docker / JSON                | ตรวจ DB และสถานะแอป                                               |
-| A02 | GET    | /login/local           | Browser / redirect           | ข้าม silent SSO แล้วไปหน้า Login                                  |
-| A03 | GET    | /login                 | Browser / HTML หรือ redirect | แสดง Login หรือเริ่ม silent SSO ครั้งแรกของ anonymous session     |
-| A04 | POST   | /login                 | Browser / form               | ตรวจรหัสผ่าน local สร้าง app token/session; ต้องมี CSRF           |
-| A05 | GET    | /sso                   | Browser / redirect           | เริ่ม explicit SSO พร้อม preflight ใช้ได้จากลิงก์ C หรือ fallback |
-| A06 | POST   | /sso/preflight         | Browser JS / JSON            | ตรวจ Keycloak ก่อนเดินทางไป C; ต้องมี CSRF                        |
-| A07 | GET    | /sso/connectivity      | Browser JS / JSON            | อ่านความคืบหน้าของ preflight ไม่ได้ยิง Keycloak เพิ่มเอง          |
-| A08 | GET    | /sso/callback          | Browser / error redirect     | รับ error จาก C; ไม่รับ token สำเร็จผ่าน GET                      |
-| A09 | POST   | /sso/callback          | Browser / form               | รับ token + signed response + state; ตรวจแล้วสร้าง session        |
-| A10 | GET    | /session/logout-events | Browser / SSE                | เปิด stream รับเหตุการณ์ Logout จาก server                        |
-| A11 | GET    | /session/heartbeat     | Browser / JSON               | ตรวจ app session/central token; introspect เมื่อยังไม่หมดอายุ     |
-| A12 | POST   | /logout/control        | C backend / acknowledgement  | รับ signed C logout บันทึก cutoff ล้าง SSO sessions แจ้ง SSE      |
-| A13 | GET    | /                      | Browser / HTML               | ตรวจ local หรือ SSO session แล้วแสดง dashboard                    |
-| A14 | POST   | /logout                | Browser / form               | Logout เฉพาะแอป ล้าง cookie; ต้องมี CSRF                          |
+A/B ใช้โค้ดเดียวกัน รวม **28 routes** Script `/sso-complete.js` เป็น static asset ส่งเพียงสัญญาณสำเร็จไปหน้าส่งต่อ ไม่ส่ง token
 
-A09 ใช้ browser-bound state และ signed response แทน generic CSRF form token ตรวจ signature, issuer, audience, expiry, challenge, token hash, one-time state และ Logout cutoff สิทธิ์มาจาก central JWT เท่านั้น
+## C — 15 routes
 
-## C: 18 routes
+| Method/path              | หน้าที่                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| `GET /health`            | ตรวจฐานข้อมูล                                                                              |
+| `GET /sso/authorize`     | รับ client/state/challenge ตรวจ session C; ไม่มี session แสดงหน้า Login ใน response นี้เลย |
+| `GET /login`             | หน้า Login C ปกติ หรือเปิดคำขอที่รออยู่                                                    |
+| `POST /login`            | ตรวจรหัสผ่าน สร้าง session C และส่ง proof ต่อใน response เดิม หรือไป dashboard             |
+| `GET /oidc/jwks`         | public signing keys ของ C ไม่มี private key                                                |
+| `POST /logout`           | ปิดต้นทาง ขอ Keycloak ยกเลิก token แจ้ง A/B แล้วล้าง session C                             |
+| `POST /sso/retry`        | ขอ token กลาง C ใหม่สูงสุด 3 ครั้ง                                                         |
+| `GET /sso/status`        | สถานะ token กลางของ C; success หลังตรวจ JWT แล้ว ไม่คืน JWT ใน JSON                        |
+| `GET /connect/:system`   | ตรวจสิทธิ์และความพร้อม ก่อน redirect ไป SSO ของแอป                                         |
+| `GET /session/heartbeat` | ตรวจ session local ของ C                                                                   |
+| `GET /`                  | dashboard C และลิงก์ A/B                                                                   |
+| `GET /users`             | หน้าจัดการบัญชีและสิทธิ์ เฉพาะ admin                                                       |
+| `POST /users`            | เพิ่ม user และสิทธิ์ในฐานข้อมูล C เท่านั้น                                                 |
+| `POST /users/:id`        | แก้บัญชี/สิทธิ์ แล้ว revoke และแจ้ง A/B                                                    |
+| `POST /users/:id/delete` | ปิดบัญชี revoke/แจ้ง A/B แล้วลบ user C                                                     |
 
-Base URL = `http://localhost:4003`
+รวม A/B/C **43 routes** รวม HTML, JSON, callback และ SSE ไม่ใช่ JSON APIs ทั้งหมด ไม่มี `/users/:id/sync` หรือ `/sso/continue` แล้ว
 
-| #   | Method | Path               | ชนิด     | ทำอะไร                                                                |
-| --- | ------ | ------------------ | -------- | --------------------------------------------------------------------- |
-| C01 | GET    | /health            | JSON     | ตรวจ DB และสถานะแอป                                                   |
-| C02 | GET    | /sso/authorize     | Browser  | รับ client_id/state/challenge/mode; ตรวจ session C หรือแสดง Login     |
-| C03 | GET    | /sso/resume        | Browser  | รับคำขอเดิมหลัง Login C แล้วออก token ของแอปปลายทาง                   |
-| C04 | GET    | /login             | HTML     | แสดง Login หรือใช้ C session ที่มีอยู่                                |
-| C05 | POST   | /login             | Form     | ตรวจรหัสผ่าน สร้าง C session; แยก direct Login กับคำขอจาก A/B         |
-| C06 | GET    | /oidc/jwks         | JSON     | อ่าน public keys ของ C เพื่อตรวจ assertion/response/logout            |
-| C07 | POST   | /logout            | Form     | revoke tokens แจ้ง A/B แล้วล้าง C session                             |
-| C08 | POST   | /sso/retry         | Form     | เริ่มตรวจความพร้อม SSO ใหม่                                           |
-| C09 | GET    | /sso/status        | JSON     | อ่านสถานะ/CSRF ให้หน้า dashboard ไม่ได้ขอ token ใหม่เอง               |
-| C10 | POST   | /sso/continue      | Form     | เมื่อสถานะ ready ขอ token กลางสำหรับ client app-control               |
-| C11 | GET    | /connect/:system   | Redirect | ตรวจสิทธิ์/สถานะ แล้วส่ง browser ไป A/B /sso; รองรับ app-a หรือ app-b |
-| C12 | GET    | /session/heartbeat | JSON     | ตรวจ C local session ไม่ได้ introspect central token                  |
-| C13 | GET    | /                  | HTML     | dashboard และสถานะ SSO                                                |
-| C14 | GET    | /users             | HTML     | ผู้ดูแลอ่านรายชื่อผู้ใช้/สิทธิ์                                       |
-| C15 | POST   | /users             | Form     | ผู้ดูแลเพิ่มผู้ใช้และ sync Keycloak                                   |
-| C16 | POST   | /users/:id         | Form     | ผู้ดูแลแก้ชื่อ/รหัสผ่าน/สิทธิ์/enabled แล้ว sync                      |
-| C17 | POST   | /users/:id/sync    | Form     | ผู้ดูแล sync ผู้ใช้ที่มีอยู่ใหม่                                      |
-| C18 | POST   | /users/:id/delete  | Form     | ปิดสิทธิ์ sync revoke unlink แล้วลบผู้ใช้ใน C                         |
+## Keycloak runtime — 8 endpoints
 
-C05 และ form routes จัดการข้อมูลตรวจ CSRF ตาม middleware; /users ต้องเป็น admin ของ C ด้วย ส่วน C02/C03 ผูกกับ pending request และ C session
+Custom base path: `/realms/sso-lab/temporary-sso-poc`
 
-C มี GET /oidc/jwks เป็น route ที่เขียนเอง ใช้ public key ชุดเดียวกับ assertion, signed response และ signed logout โดยไม่เปิด private key ไม่มี OIDC authorization-code, consent, /interaction, /sso/redeem หรือ backchannel compatibility routes แล้ว
+| Method/path                                         | ผู้เรียก                     | ข้อมูลหลักและหน้าที่                                                                          |
+| --------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------- |
+| `GET /status`                                       | A/B backend                  | คืน issuer และ temporary_sso เพื่อ preflight                                                  |
+| `POST /bootstrap`                                   | C backend                    | C client authentication + assertion purpose sso_bootstrap; issue C token aud sso-apps         |
+| `POST /authorize`                                   | Browser ในเฟรมที่ C เตรียม   | `assertion` ที่ C ลงลายเซ็น; ตรวจและส่ง token กลางใบเดิม พร้อมหลักฐาน handoff ไป callback A/B |
+| `GET /submit.js`                                    | Browser                      | ส่งฟอร์ม token เข้า callback A/B ภายในเฟรม                                                    |
+| `POST /introspect`                                  | A/B/C backend                | token + client_id + client_secret; ตรวจ JWT อายุและ cache TTL                                 |
+| `POST /revoke`                                      | Backend client เจ้าของ token | token + client authentication; ยกเลิก token รายใบ ไม่ผูกปุ่ม Logout A/B                       |
+| `POST /logout-user`                                 | C backend                    | signed logout assertion; ลบสถานะ token ผู้ใช้ตาม index และตั้ง cutoff ชั่วคราว                |
+| `GET /realms/sso-lab/protocol/openid-connect/certs` | A/B/C backend                | native Keycloak JWKS สำหรับตรวจ JWT กลาง                                                      |
 
-## Keycloak: protocol/support 5 endpoints
+**7 custom endpoints + 1 native JWKS endpoint = 8** ไม่มี native OIDC authorization/token/introspection/revoke/End Session ใน Login/Logout ใหม่นี้ อย่าใช้ native endpoint แทน custom endpoint เพียงเพราะชื่อคล้ายกัน
 
-Prefix `K = http://localhost:8080/realms/sso-lab` ภายใน Docker backend เรียก `http://keycloak:8080/realms/sso-lab`
+## การโหลดกุญแจ
 
-| #   | Method | Path ต่อจาก K                             | ผู้เรียก | หน้าที่                                                                  |
-| --- | ------ | ----------------------------------------- | -------- | ------------------------------------------------------------------------ |
-| K01 | GET    | /.well-known/openid-configuration         | A/B, C   | Discovery/readiness ตรวจเชื่อมต่อและ issuer                              |
-| K02 | GET    | /protocol/openid-connect/certs            | A/B, C   | อ่าน public keys ของ Keycloak; cache ได้                                 |
-| K03 | POST   | /protocol/openid-connect/token            | C        | JWT bearer grant สำหรับ user; client_credentials สำหรับ service account  |
-| K04 | POST   | /protocol/openid-connect/token/introspect | A/B      | ตรวจ active ของ token ใน heartbeat หรือ protected request ที่ครบช่วงตรวจ |
-| K05 | POST   | /protocol/openid-connect/revoke           | C        | revoke token ที่ยังไม่หมดอายุ; ใช้ตอน Logout/ปิดบัญชี/จัดการ race        |
+| ผู้เรียก → ปลายทาง | เส้น                                    | เมื่อใด                                                |
+| ------------------ | --------------------------------------- | ------------------------------------------------------ |
+| Keycloak → C       | `GET /oidc/jwks`                        | ทุกครั้งที่ extension ตรวจ Login/Logout proof          |
+| A/B → Keycloak     | `GET .../protocol/openid-connect/certs` | เมื่อต้องตรวจ JWT กลางและ JWKS cache ว่าง/เปลี่ยนกุญแจ |
+| A/B → C            | `GET /oidc/jwks`                        | ตรวจ Logout notification เมื่อ JWKS cache ว่าง         |
 
-K03 นับเป็น endpoint เดียว แม้ใช้ 2 grant types:
+JWKS เป็น public key ไม่ใช่ Client Secret C ไม่ต้องใช้ A/B client secrets เพื่อสร้าง proof
 
-```text
-JWT bearer:
-grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer
-client_id=app-a | app-b | app-control
-client_secret=<server-side secret>
-assertion=<C signed JWT>
-scope=openid profile email
+## Login สำเร็จใช้กี่คำขอ
 
-Service account:
-grant_type=client_credentials
-client_id=app-control-sync
-client_secret=<server-side secret>
-```
+นับจากกด SSO เมื่อหน้า Login แสดงอยู่แล้ว ไม่รวม initial silent check, polling, CSS, favicon หรือ healthcheck
 
-K04 ใช้ token, client_id, client_secret และ token_type_hint; K05 ใช้รูปแบบเดียวกันเพื่อเพิกถอน ไม่ใส่ secret ใน URL หรือเอกสาร
+| กรณี                                  | Browser คำขอหลัก | Script ส่งต่อ | A/B→K preflight | C→K bootstrap | K→C JWKS | A/B→K JWKS | C→K JWKS |
+| ------------------------------------- | ---------------: | ------------: | --------------: | ------------: | -------: | ---------: | -------: |
+| ยังไม่มี session C (F03)              |                6 |             3 |               1 |             1 |        2 |        0–1 |      0–1 |
+| มี C session และ token C ใช้ได้ (F04) |                5 |             3 |               1 |             0 |        1 |        0–1 |        0 |
+| มี C session แต่ต้องขอ token C ใหม่   |                5 |             3 |               1 |             1 |        2 |        0–1 |      0–1 |
 
-## Keycloak: Admin API 12 endpoints
+ตัวเลขปกติเมื่อไม่ retry; JWKS ขึ้นกับ cache ของแต่ละ server Bootstrap หนึ่งครั้งทำให้ Keycloak ตรวจ C proof และ C ตรวจ Keycloak token จึงมีการโหลดกุญแจตามคอลัมน์แยก
 
-Prefix `M = http://localhost:8080/admin/realms/sso-lab` ทุกเส้นด้านล่างถูกเรียกจาก **C backend** ด้วย service-account Bearer token ไม่ใช่ browser ของผู้ใช้
+F03 browser requests: POST A/B preflight → GET C authorize → POST C login → POST K authorize → POST A/B callback → GET A/B home ระหว่าง C login มี **backend POST bootstrap ภายใน POST login** ไม่ใช่ browser redirect เพิ่ม
 
-| #   | Method | Path ต่อจาก M                                                | หน้าที่                                               |
-| --- | ------ | ------------------------------------------------------------ | ----------------------------------------------------- |
-| M01 | GET    | /users                                                       | ค้นหาผู้ใช้ด้วย email และ exact=true                  |
-| M02 | POST   | /users                                                       | สร้างบัญชี metadata ไม่มีรหัสผ่าน C                   |
-| M03 | PUT    | /users/{userId}                                              | ปรับ email/enabled                                    |
-| M04 | GET    | /users/{userId}/federated-identity                           | อ่าน link กับ C                                       |
-| M05 | POST   | /users/{userId}/federated-identity/{alias}                   | เชื่อม Keycloak user กับ C user ID; alias=app-control |
-| M06 | DELETE | /users/{userId}/federated-identity/{alias}                   | ถอน link ตอนลบผู้ใช้ C                                |
-| M07 | GET    | /clients                                                     | ค้นหา app-a/app-b ด้วย clientId                       |
-| M08 | GET    | /clients/{clientUuid}/roles                                  | อ่าน definitions read/write/delete                    |
-| M09 | GET    | /users/{userId}/role-mappings/clients/{clientUuid}           | อ่าน roles ที่กำหนดโดยตรง                             |
-| M10 | POST   | /users/{userId}/role-mappings/clients/{clientUuid}           | เพิ่ม role ที่ยังไม่มี                                |
-| M11 | DELETE | /users/{userId}/role-mappings/clients/{clientUuid}           | ถอน role ที่ไม่ควรมี                                  |
-| M12 | GET    | /users/{userId}/role-mappings/clients/{clientUuid}/composite | ตรวจ effective roles รวมที่สืบทอดมา                   |
+Script ส่งต่อ 3 เส้น: C sso-post.js, Keycloak submit.js และ A/B sso-complete.js กดลิงก์จาก C เพิ่ม GET /connect/:system หนึ่งครั้ง
 
-โค้ด **ไม่ได้เรียก DELETE /users/{userId} ของ Keycloak** ตอนลบผู้ใช้ C: ปิดบัญชี ถอน roles, revoke tokens และ unlink ก่อนลบเฉพาะข้อมูล C
+**Login C โดยตรง** มี POST C login และ GET dashboard แล้ว polling /sso/status ตาม UI; C เริ่ม POST bootstrap ทันที ปกติ 1 request และ retry สูงสุด 3 เมื่อ error ชั่วคราว ไม่มี C GET status ของ Keycloakเพื่ออ้างว่าสำเร็จแทน token อีกแล้ว
 
-12 เส้นนี้มาจาก [keycloak-sync.js](../../app-control/src/services/keycloak-sync.js) ไม่รวม API ที่ผู้ดูแลกดใช้ผ่าน Keycloak Admin Console หรือสคริปต์ตั้งค่าเก่า
+C รับ token กลางจาก bootstrap แล้ว POST authorize ส่ง JWT ใบเดิมเข้า A/B โดยตรง ไม่ออก access token เพิ่มและไม่มี code exchange
 
-## ตัวอย่างจำนวน request จริง
+## Logout / Heartbeat / จัดการสิทธิ์
 
-| เหตุการณ์                               | จำนวน request Keycloak โดยไม่รวม refresh กุญแจ                                      |
-| --------------------------------------- | ----------------------------------------------------------------------------------- |
-| Login local A/B                         | 0                                                                                   |
-| Login C โดยตรง สำเร็จครั้งแรก           | discovery 1 + token 1 = 2; status polling เป็น browser→C เพิ่มต่างหาก               |
-| กด SSO A/B และ Login C ใน relay         | discovery A/B 1 + token ปลายทาง 1 = 2; ไม่ bootstrap token ของ C เพิ่มใน branch นี้ |
-| SSO A/B เมื่อมี C session               | discovery 1 + token ปลายทาง 1 = 2                                                   |
-| มีสิทธิ์ไม่พอและ C ปฏิเสธก่อน token     | discovery 1; token 0                                                                |
-| ไม่มีบัญชี local แต่ C ให้สิทธิ์        | discovery 1 + token 1 แล้ว A/B ปฏิเสธ                                               |
-| explicit preflight ติดต่อไม่ได้         | discovery สูงสุด 3; token 0                                                         |
-| automatic silent preflight ติดต่อไม่ได้ | discovery 1; token 0                                                                |
-| heartbeat token ยังไม่หมดอายุ           | introspection 1 ต่อ heartbeat                                                       |
-| heartbeat พบ token หมดอายุแล้ว          | introspection 0; ปฏิเสธจาก exp ในแอป                                                |
-| Logout A/B                              | 0                                                                                   |
-| Logout C                                | revoke N; ไม่เรียก Admin API หรือขอ service-account token ใน Logout flow            |
+| งาน               | Request หลัก                 | หมายเหตุ                                                                    |
+| ----------------- | ---------------------------- | --------------------------------------------------------------------------- |
+| Local Login A/B   | K 0                          | อ่านบัญชี/รหัสผ่านของแอป                                                    |
+| Heartbeat SSO     | Browser → A/B 1; A/B → K 0–1 | หมดอายุแล้วล้าง session โดยไม่ introspect                                   |
+| Logout A/B        | Browser 3; K 0               | POST logout → GET login/local → GET login                                   |
+| Logout C          | C → K 1; C → A/B 2           | เพิ่ม browser POST logout และ GET login ของแต่ละแท็บ รวมทั้ง JWKS ตาม cache |
+| เพิ่ม user C      | K 0                          | ไม่ sync                                                                    |
+| แก้/ปิด/ลบ user C | C → K 1; C → A/B 2           | revoke และให้เริ่ม SSO ใหม่เพื่อรับสิทธิ์ล่าสุด                             |
+| Keycloak ล่ม      | preflight สูงสุด 3           | silent 1; ไม่ retry proof เดิมอัตโนมัติ                                     |
 
-N คือจำนวน token ของผู้ใช้ที่ C บันทึกไว้และยังไม่หมดอายุ ไม่ใช่จำนวนแอป เพราะแต่ละ Login อาจขอ token ใหม่ การดึง K02 และ C /oidc/jwks เพิ่มเมื่อ cache ว่าง/refresh; Keycloak อาจอ่าน JWKS ของ C เองด้วย จึงไม่รับประกันจำนวน HTTP request รวมตายตัว
+## Setup และตรวจผล ไม่ใช่ Login runtime
 
-Sync ผู้ใช้ enabled ที่มีบัญชี/link/roles ตรงอยู่แล้ว ใช้ Admin API **11 requests**: ค้นหา user 1 + update 1 + อ่าน links 1 + (ค้นหา client, role definitions, direct roles, effective roles) 4 ต่อแอป × 2 จากนั้นเพิ่ม POST/DELETE ตาม role ที่เปลี่ยนจริง และอาจมี token service account 1 ครั้งเมื่อ cache ว่าง
+`lab:configure` ใช้ **11 method/path templates** รวม admin token 1 และ Admin API 10:
+
+- `POST /realms/master/protocol/openid-connect/token`
+- `GET /admin/realms`, `POST /admin/realms`, `PUT /admin/realms/{realm}`
+- `GET /admin/realms/{realm}/identity-provider/instances`
+- `POST /admin/realms/{realm}/identity-provider/instances`
+- `PUT /admin/realms/{realm}/identity-provider/instances/{alias}`
+- `GET /admin/realms/{realm}/clients`, `POST /admin/realms/{realm}/clients`
+- `PUT /admin/realms/{realm}/clients/{id}`
+- `GET /admin/realms/{realm}/users/count`
+
+Integration tests เพิ่ม `GET realm` และ `GET client roles` เพื่อตรวจ/คืนค่า ทั้งหมดนี้ไม่ใช่ API ที่ C เรียกเวลาผู้ใช้ Login ไม่สร้าง service account sync หรือ user/role mappings
+
+## ข้อมูลใน proof และ token
+
+Bootstrap proof ใช้ token_use sso_bootstrap และ bootstrap_generation ส่วน A/B proof ใช้ token_use sso_login และ state/challenge
+
+Proof bootstrap มี C subject, email, app_permissions และ bootstrap_generation; proof ส่งต่อ A/B มี central_jti, client/callback และ state/challenge; C session reference, source_issued_ms และ issuer/audience/iat/exp/jti/token_use ลงลายเซ็น RS256 อายุไม่เกิน 60 วินาที ใช้ซ้ำไม่ได้
+
+Token กลางมี issuer/signature ของ Keycloak, stable sub จาก issuer+subject C, aud กลุ่ม SSO จาก config, azp ของ C, exp/iat/jti, email, idp, app_permissions รวม, central_shared และ temporary_identity ส่วน state/challenge, source_issued_ms, central_jti และ token_hash อยู่ในหลักฐาน handoff ที่มี aud ของแอปผู้รับ ไม่มีรหัสผ่าน ไม่มี native Keycloak sid หรือ refresh token sub ไม่ใช่ user row ID ใน Keycloak
+
+ดู [ส่วนขยาย](../../keycloak/src/main/java/lab/sso/TemporarySsoResource.java), [C proof/logout](../../app-control/src/sso/api-sso.js), [A/B callback](../../app/src/sso/keycloak.js) และ [ผลทดสอบ](TEST-RESULTS.json)
+
+## เมนู SSO Tokens — Admin API เพิ่ม 1 เส้น
+
+`GET /admin/realms/{realm}/temporary-sso-tokens` ใช้ native Admin bearer และต้องมี realm-admin ของ realm เป้าหมาย ไม่ใช้ Client Secret A/B เพื่อขอดูรายการ
+
+Query: `first` เริ่มที่ 0, `max` 1–100 (default 25), `client` อ่านจาก clients ที่เปิด temporary.sso.enabled หรือว่าง (กรองตามผู้ออกคำขอ หรือสิทธิ์ read ของแอป), `search` ค้น email/subject/jti สูงสุด 200 ตัว
+
+Response: `items`, `clients`, `total`, `first`, `max`, `serverTime`; `clients` มี clientId/name/systemId จาก config ปัจจุบัน; แต่ละ item มี `id`, `sub`, `email`, `clientId`, `permissions`, `issuedAt`, `expiresAt`, `status` เท่านั้น ไม่มี JWT/password/secret ใช้ Cache-Control no-store
+
+แสดงเฉพาะ active tokens จาก cache ปัจจุบัน หมดอายุหรือ revoke จะถูกกรองออก ไม่มีการสร้าง user หรือเก็บประวัติถาวร Endpoint นี้แยกจาก Keycloak runtime 8 เส้นของ Login/Logout ด้านบน และไม่เพิ่ม request ใน flow Login A/B/C
+
+ดู [คู่มือเมนูและภาพ UI](../keycloak/SETUP-GUIDE.md) กับ [ผลทดสอบ](../keycloak/TOKEN-MENU-TEST-RESULTS.json)

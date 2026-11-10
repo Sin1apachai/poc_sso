@@ -1,8 +1,9 @@
 name: keycloak-sso-lab
 services:
   keycloak:
-    image: quay.io/keycloak/keycloak:26.8.1
-    command: [start-dev]
+    image: sso-keycloak:local
+    build: ./keycloak
+    command: [start-dev, --features=declarative-ui]
     environment:
       KC_HOSTNAME: http://localhost:8080
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
@@ -29,6 +30,9 @@ services:
       DB_NAME: ${APP_A_DB_NAME}
       DB_USER: ${APP_A_DB_USER}
       DB_PASSWORD: ${APP_A_DB_PASSWORD}
+      KC_AUDIENCE: ${KC_AUDIENCE}
+      KC_AUTHORITY_CLIENT: ${KC_AUTHORITY_CLIENT}
+      KC_IDP_ALIAS: ${KC_IDP_ALIAS}
       KC_ISSUER: ${KC_ISSUER}
       KC_INTERNAL_URL: ${KC_INTERNAL_URL}
       CONTROL_INTERNAL_URL: http://app-control:4003
@@ -67,6 +71,9 @@ services:
       DB_NAME: ${APP_B_DB_NAME}
       DB_USER: ${APP_B_DB_USER}
       DB_PASSWORD: ${APP_B_DB_PASSWORD}
+      KC_AUDIENCE: ${KC_AUDIENCE}
+      KC_AUTHORITY_CLIENT: ${KC_AUTHORITY_CLIENT}
+      KC_IDP_ALIAS: ${KC_IDP_ALIAS}
       KC_ISSUER: ${KC_ISSUER}
       KC_INTERNAL_URL: ${KC_INTERNAL_URL}
       CONTROL_INTERNAL_URL: http://app-control:4003
@@ -104,13 +111,12 @@ services:
       DB_PASSWORD: ${CONTROL_DB_PASSWORD}
       OIDC_ISSUER: http://localhost:4003/oidc
       OIDC_JWKS_FILE: /run/secrets/oidc-jwks.json
-      APP_A_KC_CLIENT_SECRET: ${APP_A_KC_CLIENT_SECRET}
-      APP_B_KC_CLIENT_SECRET: ${APP_B_KC_CLIENT_SECRET}
       KC_CLIENT_SECRET: ${CONTROL_KC_CLIENT_SECRET}
+      KC_AUDIENCE: ${KC_AUDIENCE}
+      KC_AUTHORITY_CLIENT: ${KC_AUTHORITY_CLIENT}
+      KC_IDP_ALIAS: ${KC_IDP_ALIAS}
       KC_ISSUER: ${KC_ISSUER}
       KC_INTERNAL_URL: ${KC_INTERNAL_URL}
-      KC_SYNC_CLIENT_ID: app-control-sync
-      KC_SYNC_CLIENT_SECRET: ${CONTROL_SYNC_CLIENT_SECRET}
     volumes:
       - ./secrets/app-control-jwks.json:/run/secrets/oidc-jwks.json:ro
     depends_on:
@@ -129,7 +135,8 @@ services:
       retries: 10
 
   postgres:
-    image: postgres:17
+    image: sso-postgres:local
+    build: ./postgres
     ports:
       - "127.0.0.1:5432:5432"
     environment:
@@ -141,7 +148,6 @@ services:
       APP_B_DB_PASSWORD: ${APP_B_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 5s

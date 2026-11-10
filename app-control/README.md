@@ -1,11 +1,16 @@
-# App Control (C)
+# ระบบ C — บัญชีและสิทธิ์กลาง
 
-IdP ตัวเดียวและแหล่งจัดการผู้ใช้/สิทธิ์ของ PoC ดู [README หลัก](../README.md)
+C ตรวจรหัสผ่าน มี session ของตัวเอง และขอ token กลางจาก Keycloak ทันทีหลัง Login อ่านสิทธิ์จาก PostgreSQL แล้วลงลายเซ็น proof ส่งผ่าน browser ให้ Keycloak ส่วน Keycloak ส่ง token เข้า A/B โดยตรง C server ไม่เก็บ token กลางของ A/B
 
-- `src/auth`: ตรวจรหัสผ่านและ session ของ C
-- `src/db`: schema, ผู้ใช้, สถานะ SSO และ token registry
-- `src/services/keycloak-sync.js`: sync บัญชี, identity link และ client roles
-- `src/sso/api-sso.js`: ขอ central token, ส่ง POST ไป A/B และ revoke/logout
-- `src/sso/signing-keys.js`: โหลด private key สำหรับลงลายเซ็น และส่งเฉพาะ public key ที่ /oidc/jwks
+- `src/auth/`: password hash, app token, session และ CSRF ของ C
+- `src/db/`: บัญชี สิทธิ์ audit และคำขอ SSO ที่รอ Login เก็บ token กลางใน central_sso_status; A/B รับ JWT ใบเดียวกัน
+- `src/sso/api-sso.js`: signed proof, callback allowlist และ signed logout
+- `src/sso/signing-keys.js`: private key ของ C และ public JWKS ที่ `/oidc/jwks`
+- `src/sso/central-token.js`: ขอ token กลาง aud sso-apps ทันทีหลัง Login และตรวจ JWT
+- `src/sso/sso-status.js`: retry การออก token จริงสูงสุด 3 ครั้ง และเก็บ C token ในสถานะฝั่ง server; success หมายถึงตรวจ JWT ผ่านแล้ว
+- `src/sso/control-proof.js`: ลงลายเซ็นและสร้างข้อมูลสิทธิ์ร่วมกันสำหรับ bootstrap, A/B และ Logout
+- `views/sso-post.ejs`, `public/sso-post.js`: ส่ง proof ในเฟรม รอเฉพาะสัญญาณสำเร็จหรือกลับ Login A/B เมื่อหมดเวลา
 
-C เก็บ private key ฝั่ง server; Keycloak ตรวจ assertion แล้วออก token กลางให้ client เป้าหมาย C ไม่ส่งรหัสผ่านผู้ใช้ให้ Keycloak
+หน้า `/users` จัดการ read/write/delete แยก A/B ไม่มี sync button หรือ Keycloak Admin API ใน C แก้สิทธิ์แล้ว revoke token เดิมและแจ้ง A/B ให้เริ่ม SSO ใหม่
+
+อ่าน [README หลัก](../README.md), [flow](../docs/flows/LOGIN-AND-SESSION.md) และ [settings](../docs/keycloak/SETUP-GUIDE.md)

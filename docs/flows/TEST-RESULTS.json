@@ -1,0 +1,22 @@
+{
+  "testedAt": "2026-11-10T09:56:01.550Z",
+  "mode": "real Compose A/B/C + PostgreSQL + Keycloak 26.8.1 custom extension",
+  "keycloakUsersBefore": 0,
+  "keycloakUsersAfter": 0,
+  "tests": [
+    "Fresh SSO returns the proof page directly from C POST /login without a resume redirect",
+    "A login through C; B reuses C session; Keycloak posts directly to A/B; C/A/B reuse the identical central JWT and jti, only one token-list row after entering both apps",
+    "Proof tampering/replay and callback replay/cross-app token rejected; introspection accepts the same JWT for both entitled clients",
+    "Logout C revokes central tokens, pushes A/B out through SSE, and preserves independent local login",
+    "Local login issues no central token; local A does not sign in B; app-only logout stays on login",
+    "Login C immediately gets a verified central token before opening A/B; it appears as app-control in SSO Tokens and the public status exposes no JWT",
+    "Direct login C reports actual token issuance correctly and the A link signs in without asking for the password again",
+    "C user management saves without Keycloak sync; denied and missing-local-user modals appear once after explicit SSO",
+    "Read/write/delete set in C appear in the shared JWT after re-login, with no Keycloak role mappings",
+    "Real token expiry removes the app session on heartbeat and returns login; one-hour browser timer accelerated only by test injection",
+    "Keycloak handoff connection failure returns to A login with connection modal instead of a browser error page",
+    "Keycloak outage during Login C retries actual token issuance three times, reports failure without claiming SSO success, and keeps C local login usable",
+    "Actual Keycloak container outage: A/B each retry three checks, remain at their own login and display modal",
+    "Final realm users remain zero; app-a/app-b role definitions remain empty"
+  ]
+}

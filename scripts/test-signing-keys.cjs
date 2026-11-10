@@ -1,12 +1,11 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 
 test("C JWKS exposes only the public key and verifies C signed JWTs", async () => {
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "sso-jwks-"));
+  const directory = fs.mkdtempSync(path.join(__dirname, ".sso-jwks-"));
   const previousFile = process.env.OIDC_JWKS_FILE;
   try {
     const { privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -30,7 +29,7 @@ test("C JWKS exposes only the public key and verifies C signed JWTs", async () =
 
     const josePath = require.resolve("jose", { paths: [path.resolve("app-control")] });
     const { SignJWT, jwtVerify, createLocalJWKSet } = await import(josePath);
-    const token = await new SignJWT({ token_use: "sso_response" })
+    const token = await new SignJWT({ token_use: "sso_login" })
       .setProtectedHeader({ alg: "RS256", kid: signing.kid })
       .setIssuer("http://localhost:4003/oidc")
       .setAudience("app-a")
@@ -41,7 +40,7 @@ test("C JWKS exposes only the public key and verifies C signed JWTs", async () =
       audience: "app-a",
       algorithms: ["RS256"],
     });
-    assert.equal(payload.token_use, "sso_response");
+    assert.equal(payload.token_use, "sso_login");
   } finally {
     if (previousFile === undefined) delete process.env.OIDC_JWKS_FILE;
     else process.env.OIDC_JWKS_FILE = previousFile;

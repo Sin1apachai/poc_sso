@@ -6,8 +6,6 @@ secrets/*
 !secrets/.gitignore
 !secrets/README.md
 **/node_modules/
-work/
-outputs/
 **/__pycache__/
 *.pyc
 *.log

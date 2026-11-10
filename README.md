@@ -1,55 +1,60 @@
-# SSO Proof of Concept
+# SSO PoC — C ยืนยันตัวตน, Keycloak ออก token ชั่วคราว
 
-ระบบทดลอง SSO ด้วย Node.js, PostgreSQL และ Keycloak 26.8.1 โดยมี C เป็น IdP ตัวเดียว A/B ใช้โค้ดร่วมกัน แต่แยกฐานข้อมูล cookie และ session ตาม environment
+A/B/C ใน Docker Compose ใช้ flow ตัวตนชั่วคราวแล้ว C เก็บบัญชีและสิทธิ์ Keycloak ตรวจหลักฐานที่ C ลงลายเซ็นและออก token กลาง ส่วน A/B ตรวจ token สิทธิ์ และบัญชีในฐานข้อมูลตัวเองก่อนสร้าง token/session แยกกัน
 
-| ระบบ           | URL                         | บัญชีเริ่มต้นสำหรับแล็บ               |
-| -------------- | --------------------------- | ------------------------------------- |
-| A              | http://localhost:4001       | สร้างบัญชี local ด้วย CLI ตามด้านล่าง |
-| B              | http://localhost:4002       | สร้างบัญชี local ด้วย CLI ตามด้านล่าง |
-| C              | http://localhost:4003       | admin / admin-c                       |
-| Keycloak Admin | http://localhost:8080/admin | admin / admin-local-demo              |
+**ไม่ sync user หรือ role mapping เข้า Keycloak และ C server ไม่ได้รับ token กลางของ A/B** สถานะตัวตนและ token กลางเก็บใน cache TTL ของส่วนขยาย Java ไม่มี native Keycloak user session หรือ refresh token ใน PoC นี้
 
-บัญชีเหล่านี้เป็นค่าเริ่มต้นของ PoC สำหรับ localhost เท่านั้น
+Login C สำเร็จแล้วจะเริ่มขอ token กลาง `aud=sso-apps` ทันที เก็บ C token ฝั่ง server และขึ้นสถานะสำเร็จหลังตรวจ JWT แล้ว ก่อนเปิด A/B จะเห็นรายการ app-control ในเมนู SSO Tokens
 
-## คู่มือตั้งค่า Keycloak
+## เริ่มอ่าน
 
-อ่าน [คู่มือภาษาไทยเล่มเดียว](docs/keycloak/SETUP-GUIDE.md) เริ่มจากหน้าที่ A/B/C และ Keycloak แล้วอธิบาย Realm, IdP, Client, สิทธิ์และกุญแจก่อนพาตั้งค่า UI พร้อมภาพ ไม่ต้องเปิดเอกสาร feature หรือ preflight แยก
+1. [รายการ flow F01–F10](docs/flows/README.md)
+2. [Sequence diagram และ flowchart แยกแต่ละกรณี](docs/flows/LOGIN-AND-SESSION.md)
+3. [API และจำนวน request](docs/flows/API-CATALOG.md)
+4. [เข้าใจ feature และตั้งค่า Keycloak ทีละขั้น](docs/keycloak/SETUP-GUIDE.md)
+5. [ผลทดสอบกับแอปจริง](docs/flows/TEST-RESULTS.json)
 
-## เอกสาร flow และ API
+## แต่ละระบบทำอะไร
 
-- [รายการ 10 flows และจำนวน endpoint](docs/flows/README.md)
-- [Sequence diagram และ flowchart แยกแต่ละ flow](docs/flows/LOGIN-AND-SESSION.md)
-- [รายการ API ของ A/B/C และ Keycloak พร้อมจำนวน request](docs/flows/API-CATALOG.md)
+| ส่วน                | หน้าที่                                                                                                    |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| A/B                 | Login local ด้วยฐานข้อมูลตัวเอง หรือรับ token กลาง ตรวจ read และ local account แล้วสร้าง app token/session |
+| C                   | ตรวจรหัสผ่าน เก็บบัญชีและ read/write/delete ของแต่ละแอป ลงลายเซ็น proof และแจ้ง Logout                     |
+| Keycloak + ส่วนขยาย | ตรวจ proof C เก็บตัวตน/สิทธิ์ชั่วคราวและออก token กลางใบเดียวรวมสิทธิ์ทุกแอป                               |
+| Browser             | ถือ session cookie แยกแต่ละระบบ และส่ง proof/token ผ่าน form POST                                          |
 
-## โครงสร้าง
-
-```text
-app/                       # แอปเดียวสำหรับ A/B
-  src/auth/                # Login local, cookie, session, CSRF, app JWT
-  src/db/                  # PostgreSQL และ schema
-  src/sso/                 # ตรวจ token, callback, heartbeat, logout
-  src/routes.js            # เส้นทาง HTTP
-  src/server.js            # เริ่ม server
-  public/                  # JavaScript/CSS ฝั่ง browser
-  views/                   # EJS
-app-control/               # ระบบ C จัดการผู้ใช้และสิทธิ์
-  src/auth/
-  src/db/
-  src/sso/                 # JWT grant, JWKS, token POST และ revoke
-  src/services/            # sync บัญชี/สิทธิ์เข้า Keycloak
-  public/
-  views/
-postgres/init/             # สร้างฐานข้อมูลเมื่อเริ่ม volume ใหม่
-scripts/                   # ตรวจ source, generate key และทดสอบ flow ปัจจุบัน
-secrets/                   # private key ในเครื่อง ไม่ commit
-docs/keycloak/            # เอกสาร flow และ settings อ้างอิง
-compose.yaml
-.env.example
+```mermaid
+sequenceDiagram
+    actor U as User / Browser
+    participant A as ระบบ A หรือ B
+    participant C as ระบบ C
+    participant K as Keycloak + ส่วนขยาย
+    U->>A: กด Login SSO
+    A->>K: ตรวจความพร้อม
+    K-->>A: พร้อม
+    A-->>U: URL เริ่ม Login C พร้อม state/challenge
+    U->>C: เปิดคำขอ SSO
+    C-->>U: หน้า Login หากไม่มี session C
+    U->>C: ส่งชื่อผู้ใช้และรหัสผ่านเมื่อจำเป็น
+    C->>C: ตรวจบัญชีและสร้าง session C
+    C->>K: POST bootstrap พร้อม proof และ client auth ของ C
+    K-->>C: Token กลาง aud sso-apps
+    C->>C: ตรวจและเก็บ token กลางของ C ฝั่ง server
+    C-->>U: ฟอร์ม signed proof
+    U->>K: POST proof ในเฟรมส่งต่อ
+    K->>K: ตรวจหลักฐาน อ่าน token เดิม และเซ็น handoff
+    K-->>U: ฟอร์ม token เดิมและ handoff ไป callback A/B
+    U->>A: POST token กลางใบเดิม state และ handoff
+    A->>A: ตรวจ JWT binding สิทธิ์ และบัญชี แล้วสร้าง session
+    A-->>U: หน้ายืนยันสำเร็จในเฟรม และสัญญาณสำเร็จที่ไม่มี token
+    U->>A: เปิดหน้าหลักของแอป
 ```
 
-## เริ่มใช้งาน
+เฟรมส่งต่อใช้เพื่อกู้คืนเมื่อ Keycloak ล่มหลังตรวจพร้อม ผ่านไป 12 วินาทีแล้วยังไม่สำเร็จจะกลับ Login A/B พร้อม modal C server เก็บ token กลางใบเดียวกับ A/B; สัญญาณที่ส่งให้หน้าส่งต่อมีเพียง `sso-complete` ไม่มี JWT
 
-ต้องมี Docker Compose, Node.js 22 และ Python 3 สำหรับ browser integration tests
+## เปิด PoC บนเครื่องใหม่
+
+ต้องมี Docker, Node.js และ Google Chrome สำหรับ integration tests คำสั่งทั้งหมดรันที่ root ของ repo
 
 ```sh
 cp .env.example .env
@@ -57,80 +62,76 @@ npm ci
 npm --prefix app ci
 npm --prefix app-control ci
 npm run keys:generate
-```
-
-แก้ `.env` โดยตั้งรหัสฐานข้อมูล session secrets และ Client Secrets ของ Keycloak ให้ถูกต้อง แล้วรัน:
-
-```sh
+npm run lab:prepare
 docker compose up -d --build
+npm run lab:configure
 ```
 
-Compose สร้าง Keycloak แบบว่าง ไม่ import realm หรือ sync ผู้ใช้ให้อัตโนมัติ ต้องตั้ง realm `sso-lab`, IdP `app-control`, clients `app-a`, `app-b`, `app-control`, `app-control-sync`, roles และ mappers ก่อนใช้ SSO แล้ว sync ผู้ใช้จากหน้า C ค่าตัวอย่างใน `.env.example` ไม่ใช่ Client Secrets ที่ใช้งานได้จริง
+ตั้งรหัสฐานข้อมูลและ session secrets ใน `.env` ก่อนเปิดแล็บ `lab:prepare` สร้าง Client Secrets A/B/C เมื่อยังว่างหรือเป็น placeholder โดยไม่พิมพ์ออกจอ `lab:configure` สร้าง/ปรับ realm, trust C และ clients A/B/C ในแล็บ ไม่สร้าง users/roles และไม่ใช่การ import ข้อมูลผู้ใช้
 
-ฐานข้อมูลแอปสร้างเฉพาะครั้งแรกที่ PostgreSQL volume ว่าง ส่วน Keycloak ใน Compose นี้ใช้ dev database ใน volume ของตัวเอง
-
-## สร้างผู้ใช้ A/B สำหรับฐานข้อมูลใหม่
-
-C มี admin/admin-c เริ่มต้นอัตโนมัติ ส่วน A/B ไม่มี seed user อัตโนมัติ ฐานข้อมูลแล็บเดิมอาจมีบัญชี admin อยู่แล้ว สำหรับเครื่องใหม่สร้างผ่าน CLI โดยให้อีเมลตรงกับ C หากจะใช้ SSO:
+A/B ต้องมีบัญชี local ที่ email ตรง C จึงจะใช้ SSO ได้ C มี admin เริ่มต้น แต่ A/B ไม่ seed user อัตโนมัติ:
 
 ```sh
-# ตัวอย่างบัญชีแล็บ ใช้ password คนละค่าต่อแอป
 printf '%s' 'admin-a-demo' | docker compose exec -T app-a node src/create-user.js admin@example.com
 printf '%s' 'admin-b-demo' | docker compose exec -T app-b node src/create-user.js admin@example.com
 ```
 
-CLI อ่าน password จาก stdin; ต้องมี 8 ตัวขึ้นไป และไม่เกิน 72 ไบต์
+ตัวอย่างนี้เป็นบัญชีทดสอบ localhost เท่านั้น ถ้ามี email แล้ว CLI จะไม่เขียนทับรหัสผ่านเดิม
 
-## ขอบเขตโค้ดปัจจุบัน
+| ระบบ           | URL                         | บัญชีตัวอย่าง                                      |
+| -------------- | --------------------------- | -------------------------------------------------- |
+| A              | http://localhost:4001/login | admin@example.com / admin-a-demo เมื่อสร้างตาม CLI |
+| B              | http://localhost:4002/login | admin@example.com / admin-b-demo เมื่อสร้างตาม CLI |
+| C              | http://localhost:4003/login | admin / admin-c                                    |
+| Keycloak Admin | http://localhost:8080/admin | admin / admin-local-demo                           |
 
-- A/B 14 routes ต่อระบบ และ C 18 routes รวมทั้งหมด 46 (รวมหน้า HTML, JSON, callback และ SSE)
-- Keycloak ที่ backend เรียก 17 method/path templates: protocol/support 5 + Admin API 12
-- C ใช้ JWT Authorization Grant และมีเพียง public JWKS ที่ /oidc/jwks ไม่ใช่ OIDC authorization server เต็มรูปแบบ
-- ไม่มี consent, /interaction, /logout/backchannel, OIDC code exchange, shared registry หรือ dependency oidc-provider/openid-client
-- ไม่มีการสร้าง schema ของ OIDC/registry เก่าบนฐานข้อมูลใหม่ ตารางเก่าที่อยู่ใน volume เดิมไม่ได้ถูก drop เพื่อรักษาข้อมูล
-- ไม่แก้ settings Keycloak อัตโนมัติ; realm ต้องตั้งค่าให้ครบก่อน SSO tests
+## พฤติกรรมที่ใช้จริง
 
-## Login และ Logout
+- กด SSO A/B เมื่อยังไม่มี session C: Login C ได้ token กลางก่อน แล้ว A/B รับ token ใบเดิม
+- มี session C แล้วเปิดอีกแอป: ไม่ถามรหัสผ่านซ้ำ และใช้ token กลางใบเดียวกับ C
+- Login C โดยตรง: สร้าง session C แล้วขอ token กลาง `aud=sso-apps` ทันที ตรวจ JWT ก่อนขึ้นสถานะสำเร็จ ไม่ต้องรอเปิด A/B
+- Login local A/B: ไม่ออก token กลาง ไม่ทำให้ Login อีกแอปได้
+- ไม่มี read หรือไม่มี local account: กลับ Login A/B และแสดง modal ครั้งเดียวเมื่อผู้ใช้กด SSO
+- แก้สิทธิ์ใน C: บันทึกที่ C แล้ว revoke token เดิมและแจ้ง A/B ออก ผู้ใช้เริ่ม SSO ใหม่เพื่อรับสิทธิ์ล่าสุด
+- Logout A/B: ออกเฉพาะแอป ไม่ Logout C หรืออีกแอป
+- Logout C: signed proof ไป Keycloak ลบสถานะชั่วคราว แล้ว signed notification ไป A/B ล้างเฉพาะ SSO sessions; local sessions คงอยู่
+- Access token ปกติ 15 นาที; heartbeat browser ทุก 1 ชั่วโมง และ protected requests ตรวจ expiry ด้วย ไม่มี auto-refresh
+- Keycloak ล่ม: preflight สูงสุด 3 ครั้งสำหรับการกด SSO และแจ้ง modal; local Login ยังใช้ได้
 
-- Login local A/B ตรวจรหัสผ่านในฐานข้อมูลของตัวเอง ไม่ขอ token กลาง
-- Login C ตรวจรหัสผ่านใน C แล้วขอ token กลางจาก Keycloak ด้วย JWT Authorization Grant
-- A/B SSO ส่ง browser ไป C พร้อม state และ challenge; C ใช้ session ที่มีหรือแสดงหน้า Login
-- C ขอ access token สำหรับ client ปลายทาง แล้วส่งผ่าน browser form POST ไป A/B พร้อมผลยืนยันที่ลงลายเซ็น
-- A/B ตรวจ token, state, สิทธิ์ `read` และ local account ที่มี email ตรงกัน ก่อนสร้าง app token/session ของตัวเอง
-- ไม่มี `/sso/redeem` และไม่มี introspection ตอน Login; ยังมี readiness check และการโหลด JWKS เมื่อ cache ว่าง
-- สิทธิ์ `read/write/delete` จัดการที่ C และ sync เป็น client roles ใน Keycloak; ไม่ใช่ทุก role จะมีหน้า CRUD ใน PoC
-- Logout A/B ออกเฉพาะแอป; Logout C revoke token กลางและส่ง signed notification ให้ A/B ล้าง SSO sessions ส่วน local sessions คงอยู่
-- Heartbeat SSO ทุก 1 ชั่วโมง ไม่มี timer ตรวจ expiry เพิ่ม; คำขอไปยังหน้าที่ป้องกันไว้ตรวจ expiry ด้วย
+การไม่ถามรหัสผ่านซ้ำอาศัย **session C** ไม่ใช่ token กลางร่วมใน localStorage Browser ถือ cookie อ้างอิง session เท่านั้น token ของแอปและ token กลางเก็บฝั่ง server ของแต่ละแอป
 
-รายละเอียด: [คู่มือการทำงานและตั้งค่า Keycloak](docs/keycloak/SETUP-GUIDE.md)
-
-## ตรวจโค้ดและจัดรูปแบบ
+## ทดสอบ
 
 ```sh
-npm run format
-npm run format:check
 npm run check
 npm test
+npm run test:integration
+npm run test:token-menu
 ```
 
-`npm run check` ตรวจ syntax, local imports และ EJS โดยไม่แก้ข้อมูลในฐานข้อมูล ส่วน `npm test` ทดสอบ readiness/retry และการลงลายเซ็น/JWKS แบบไม่เรียก Keycloak จริง
+Integration tests ใช้ A/B/C, PostgreSQL และ Keycloak จริง ตรวจ Login local/SSO, user management, read/write/delete, modal, replay, Logout, expiry, heartbeat และ outage โดยหยุดเฉพาะ Keycloak ของแล็บชั่วคราว แล้วคืนสถานะและอายุ token เมื่อจบ รายงานอยู่ใน `docs/flows/TEST-RESULTS.json` ตั้ง `CHROME_PATH` ได้หาก Chrome อยู่ตำแหน่งอื่น
 
-## ทดสอบกับแล็บที่ตั้งค่าครบแล้ว
+ทดสอบ heartbeat โดยเร่ง timer จากฝั่ง test เท่านั้น ไม่เปลี่ยนช่วง 1 ชั่วโมงของโค้ดแอป และไม่ได้รอหนึ่งชั่วโมงจริง ใช้บัญชี admin และบัญชีตัวอย่าง A/B ด้านบน จึงควรรันในแล็บนี้เท่านั้น
 
-Browser tests ใช้ `playwright-core`; ตั้ง `CHROME_PATH` หาก Chrome ไม่อยู่ในตำแหน่งมาตรฐานของ macOS
+## โครงสร้าง
 
-```sh
-python3 scripts/test-local-smoke.py
-python3 scripts/test-api-mode.py
-python3 scripts/test-post-sso.py
-python3 scripts/test-explicit-denial.py
-python3 scripts/test-hourly-sso.py
+```text
+app/                       # โค้ด A/B ร่วมกัน แยก env/DB/cookie/session
+app-control/               # C: บัญชี สิทธิ์ signed proof และ Logout
+keycloak/                  # Java extension + Dockerfile ที่ Compose ใช้จริง
+postgres/                  # image และ initialization ของฐานข้อมูลแยก A/B/C
+scripts/setup-temporary-sso.cjs # เตรียม config ของ realm และ client
+scripts/test-temporary-sso.cjs  # integration tests กับแล็บจริง
+docs/flows/                # flow, API และผลทดสอบ
+docs/keycloak/             # feature/settings พร้อมเหตุผล
 ```
 
-ทดสอบสร้างบัญชีชั่วคราวแล้วลบเมื่อจบ การทดสอบ hourly เปลี่ยนอายุ token ชั่วคราวแล้วคืนค่า ต้องมี realm/client/service account พร้อมก่อนรัน
+## ขอบเขต
 
-## ข้อมูลที่ไม่เผยแพร่
+นี่เป็น PoC localhost แบบ Keycloak node เดียว ใช้ HTTP ภายในแล็บ ส่วนขยายใช้ SPI ภายในของ Keycloak จึงผูกกับเวอร์ชัน 26.8.1 ยังไม่ทดสอบ HA, cache หลาย node หรือระบบส่ง notification ซ้ำแบบทนทาน หาก revoke/แจ้งแอปไม่สำเร็จ C ตอบ 503 เพื่อให้ retry ไม่ถือว่า Logout สำเร็จ
 
-`.env`, private keys, exports ของ realm, screenshots ที่มีข้อมูลจริง, ข้อมูลผู้ใช้, videos, backups ไม่ถูก commit สคริปต์และเอกสาร flow เก่าถูกนำออกจากต้นไม้โปรเจกต์แล้ว เอกสาร settings เป็นค่าอ้างอิง ไม่ใช่ export พร้อมรหัสลับและไม่บอกสถานะ runtime ปัจจุบัน
+`.env`, private keys และข้อมูลจริงไม่ commit ไม่มีการนำ token หรือ Client Secret จริงลงในรายงาน
 
-ภาพ UI ตัวอย่างใน docs/keycloak/images เป็นข้อมูลสมมติจาก Keycloak ชั่วคราวและรวมไว้ใน repository สำหรับคู่มือ โดยปิดบัง secret แล้ว
+โค้ดที่เหลือยึด flow ปัจจุบัน: token กลางใบเดียวร่วม C/A/B, session ของแต่ละแอปแยกกัน และสถานะ C ใช้ idle/checking/success/failed เท่านั้น สคริปต์ตั้งค่า สร้างกุญแจ สร้างบัญชี และทดสอบยังใช้สำหรับเปิดและตรวจแล็บ
+
+กรณีเริ่ม SSO ที่ A/B แล้ว Login C สำเร็จ C ส่งหน้าส่งต่อ proof จาก POST /login ได้ทันที ไม่ redirect กลับมาเรียก C เพิ่มอีกครั้ง คำขอ SSO ถูกใช้ได้ครั้งเดียวและยังผูกกับ session ก่อน Login แม้จะเปลี่ยน session ID แล้ว

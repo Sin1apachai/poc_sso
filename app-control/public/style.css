@@ -200,12 +200,6 @@ input[type="checkbox"] {
   gap: 18px;
   align-items: end;
 }
-.choices {
-  display: flex;
-  gap: 14px;
-  padding-bottom: 10px;
-}
-.choices label,
 .check {
   white-space: nowrap;
 }
@@ -290,9 +284,6 @@ td.actions button {
 .success {
   background: #e7f5ec;
   color: #2c7653;
-}
-.error-text {
-  color: #b14e47;
 }
 .login-page {
   display: grid;

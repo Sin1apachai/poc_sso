@@ -9,14 +9,13 @@
   <body class="login-page">
     <main class="login-card">
       <h1>กำลังเข้าสู่ระบบ</h1>
-      <p>กำลังส่งผลยืนยันตัวตนไปยังแอปของคุณ</p>
-      <form id="sso-response" method="post" action="<%= callback %>">
-        <input type="hidden" name="state" value="<%= state %>">
-        <input type="hidden" name="iss" value="<%= issuer %>">
-        <input type="hidden" name="access_token" value="<%= accessToken %>">
-        <input type="hidden" name="response" value="<%= response %>">
+      <p>กำลังขอ token กลาง กรุณารอสักครู่</p>
+      <iframe name="kc-handoff" title="เชื่อมต่อ SSO" hidden></iframe>
+      <form id="sso-response" method="post" target="kc-handoff" action="<%= action %>"
+        data-fallback="<%= fallback %>">
+        <input type="hidden" name="assertion" value="<%= assertion %>">
         <noscript>
-          <button type="submit">ดำเนินการต่อ</button>
+          <p>กรุณาเปิด JavaScript เพื่อเข้าสู่ระบบ SSO</p>
         </noscript>
       </form>
     </main>

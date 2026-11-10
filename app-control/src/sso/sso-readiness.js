@@ -1,35 +1,19 @@
-// Probe connectivity only. No OIDC state, token exchange or proof is created here.
-async function checkReadiness({
-  url,
-  issuer,
-  fetcher = fetch,
-  sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+// Retry actual token bootstrap. Each attempt creates a fresh signed proof in the caller.
+async function retryBootstrap({
+  attempt,
   onAttempt = async () => {},
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }) {
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    await onAttempt(attempt);
-    let retryable = true;
+  for (let n = 1; n <= 3; n++) {
+    await onAttempt(n);
     try {
-      const response = await fetcher(url, { signal: AbortSignal.timeout(3000), redirect: "error" });
-      if (response.ok) {
-        const metadata = await response.json();
-        return metadata.issuer === issuer
-          ? { ok: true, attempts: attempt }
-          : { ok: false, attempts: attempt, reason: "configuration" };
-      }
-      retryable = response.status >= 500 || response.status === 429;
+      return { ok: true, attempts: n, value: await attempt() };
     } catch (error) {
-      if (error instanceof SyntaxError) {
-        return { ok: false, attempts: attempt, reason: "configuration" };
-      }
-    }
-    if (!retryable) {
-      return { ok: false, attempts: attempt, reason: "configuration" };
-    }
-    if (attempt < 3) {
-      await sleep(attempt === 1 ? 2000 : 5000);
+      if (error.retryable === false || error instanceof SyntaxError)
+        return { ok: false, attempts: n, reason: error.reason || "configuration" };
+      if (n === 3) return { ok: false, attempts: n, reason: "unavailable" };
+      await sleep(n === 1 ? 2000 : 5000);
     }
   }
-  return { ok: false, attempts: 3, reason: "unavailable" };
 }
-module.exports = { checkReadiness };
+module.exports = { retryBootstrap };

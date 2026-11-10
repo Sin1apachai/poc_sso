@@ -1,6 +1,5 @@
 const express = require("express");
 const { issueAppToken, verifyAppToken } = require("./auth/app-token");
-const central = require("./sso/central-login");
 const apiSso = require("./sso/api-sso");
 const ssoStatus = require("./sso/sso-status");
 const bcrypt = require("bcryptjs");
@@ -8,7 +7,6 @@ const { rateLimit } = require("express-rate-limit");
 const { pool } = require("./db/database");
 const { csrfToken, checkCsrf, checkSsoCsrf } = require("./auth/csrf");
 const { authenticate, regenerateSession, saveSession } = require("./auth/auth");
-const { syncUser, unlinkControlIdentity } = require("./services/keycloak-sync");
 const { getPublicJwks } = require("./sso/signing-keys");
 const permissionKeys = [
   "allow_a",
@@ -21,6 +19,10 @@ const permissionKeys = [
 const permissionValues = (body) => permissionKeys.map((key) => body[key] === "on");
 async function createRoutes() {
   const r = express.Router();
+  async function startCentralLogin(req, res) {
+    await ssoStatus.enqueue(req);
+    res.redirect("/");
+  }
   const limit = rateLimit({
     windowMs: 15 * 60 * 1000,
     limit: 30,
@@ -32,7 +34,6 @@ async function createRoutes() {
     res.json({ status: "ok" });
   });
   r.get("/sso/authorize", apiSso.authorize);
-  r.get("/sso/resume", apiSso.resume);
   r.get("/login", async (req, res) => {
     const relay = await apiSso.loginRequest(req, req.query.request);
     if (req.query.request && !relay) {
@@ -52,7 +53,8 @@ async function createRoutes() {
           local.userId,
         ]);
         if (rows[0]) {
-          return res.redirect(relay ? "/sso/resume?request=" + encodeURIComponent(relay.id) : "/");
+          if (relay) return apiSso.completeLogin(req, res, relay.id, req.sessionID);
+          return res.redirect("/");
         }
       }
     }
@@ -93,15 +95,9 @@ async function createRoutes() {
     csrfToken(req);
     await saveSession(req);
     if (relay) {
-      const result = await pool.query(
-        "UPDATE api_sso_login_requests SET session_id=$1 WHERE id=$2 AND session_id=$3 AND expires_at>now()",
-        [req.sessionID, relay.id, previousSessionId],
-      );
-      return res.redirect(
-        result.rowCount ? "/sso/resume?request=" + encodeURIComponent(relay.id) : "/",
-      );
+      return apiSso.completeLogin(req, res, relay.id, previousSessionId);
     }
-    return central.start(req, res);
+    return startCentralLogin(req, res);
   });
   r.get("/oidc/jwks", async (req, res) => res.json(await getPublicJwks()));
   r.post("/logout", checkCsrf, async (req, res) => {
@@ -112,7 +108,7 @@ async function createRoutes() {
         [req.sessionID],
       );
       try {
-        await apiSso.revokeIssued(userId);
+        await apiSso.revokeIssued(userId, req.sessionID);
       } catch {
         await pool.query("DELETE FROM api_sso_closed_sessions WHERE session_id=$1", [
           req.sessionID,
@@ -162,7 +158,7 @@ async function createRoutes() {
   }
   async function resolveControlUser(req, res, next) {
     const { rows } = await pool.query(
-      "SELECT id,username,email,is_admin,enabled,allow_a,allow_b,allow_a_write,allow_a_delete,allow_b_write,allow_b_delete,sync_status,sync_error FROM users WHERE id=$1",
+      "SELECT id,username,email,is_admin,enabled,allow_a,allow_b,allow_a_write,allow_a_delete,allow_b_write,allow_b_delete FROM users WHERE id=$1",
       [req.session.local.userId],
     );
     if (!rows[0]?.enabled) {
@@ -178,11 +174,10 @@ async function createRoutes() {
     next();
   }
   const loginRequired = [localRequired, resolveControlUser];
-  r.post("/sso/retry", loginRequired, checkSsoCsrf, central.start);
+  r.post("/sso/retry", loginRequired, checkSsoCsrf, startCentralLogin);
   r.get("/sso/status", loginRequired, (req, res) =>
     res.json({ ...ssoStatus.publicStatus(res.locals.ssoState), csrf: res.locals.csrf }),
   );
-  r.post("/sso/continue", loginRequired, checkSsoCsrf, central.proceed);
   r.get("/connect/:system", loginRequired, (req, res) => {
     const targets = {
       "app-a": { allowed: req.user.allow_a, url: "http://localhost:4001/sso" },
@@ -192,7 +187,7 @@ async function createRoutes() {
     if (!target) {
       return res.sendStatus(404);
     }
-    if (!target.allowed || req.user.sync_status !== "synced") {
+    if (!target.allowed) {
       return res.sendStatus(403);
     }
     if (res.locals.ssoState.status !== "success") {
@@ -216,11 +211,11 @@ async function createRoutes() {
   );
   r.get("/users", loginRequired, adminRequired, async (req, res) => {
     const { rows } = await pool.query(
-      "SELECT id,username,email,is_admin,enabled,allow_a,allow_b,allow_a_write,allow_a_delete,allow_b_write,allow_b_delete,sync_status,sync_error FROM users ORDER BY id",
+      "SELECT id,username,email,is_admin,enabled,allow_a,allow_b,allow_a_write,allow_a_delete,allow_b_write,allow_b_delete FROM users ORDER BY id",
     );
     res.render("users", {
       users: rows,
-      notice: req.query.saved === "1" ? "บันทึกแล้ว ตรวจสถานะการซิงก์ของผู้ใช้ด้านล่าง" : null,
+      notice: req.query.saved === "1" ? "บันทึกบัญชีและสิทธิ์ใน C แล้ว" : null,
       error: null,
     });
   });
@@ -248,9 +243,9 @@ async function createRoutes() {
   }
   r.post("/users", loginRequired, adminRequired, checkCsrf, async (req, res) => {
     const data = validate(req.body, true);
-    const { rows } = await pool.query(
+    await pool.query(
       `INSERT INTO users(username,email,password_hash,allow_a,allow_b,allow_a_write,allow_a_delete,allow_b_write,allow_b_delete)
-   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+   VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [
         data.username,
         data.email,
@@ -259,7 +254,6 @@ async function createRoutes() {
       ],
     );
     await audit(req, "create-user", data.email);
-    await syncUser(rows[0].id);
     res.redirect("/users?saved=1");
   });
   r.post("/users/:id", loginRequired, adminRequired, checkCsrf, async (req, res) => {
@@ -277,24 +271,17 @@ async function createRoutes() {
     const hash = data.password ? await bcrypt.hash(data.password, 12) : null;
     const { rows } = await pool.query(
       `UPDATE users SET username=$2,password_hash=COALESCE($3,password_hash),
-   enabled=$4,allow_a=$5,allow_b=$6,allow_a_write=$7,allow_a_delete=$8,allow_b_write=$9,allow_b_delete=$10,sync_status='pending',sync_error=NULL WHERE id=$1 RETURNING email`,
+   enabled=$4,allow_a=$5,allow_b=$6,allow_a_write=$7,allow_a_delete=$8,allow_b_write=$9,allow_b_delete=$10 WHERE id=$1 RETURNING email`,
       [req.params.id, data.username, hash, enabled, ...permissionValues(req.body)],
     );
     if (!rows[0]) {
       return res.sendStatus(404);
     }
     if (data.password) {
-      await pool.query("DELETE FROM session WHERE sess->>'userId'=$1", [req.params.id]);
+      await pool.query("DELETE FROM session WHERE sess->'local'->>'userId'=$1", [req.params.id]);
     }
     await audit(req, "update-user-permissions", rows[0].email);
-    await syncUser(req.params.id);
-    res.redirect("/users?saved=1");
-  });
-  r.post("/users/:id/sync", loginRequired, adminRequired, checkCsrf, async (req, res) => {
-    if (!/^\d+$/.test(req.params.id)) {
-      return res.sendStatus(400);
-    }
-    await syncUser(req.params.id);
+    await apiSso.revokeIssued(req.params.id);
     res.redirect("/users?saved=1");
   });
   r.post("/users/:id/delete", loginRequired, adminRequired, checkCsrf, async (req, res) => {
@@ -308,18 +295,15 @@ async function createRoutes() {
       });
     }
     const { rows } = await pool.query(
-      "UPDATE users SET enabled=false,allow_a=false,allow_b=false,allow_a_write=false,allow_a_delete=false,allow_b_write=false,allow_b_delete=false,sync_status='pending' WHERE id=$1 RETURNING email",
+      "UPDATE users SET enabled=false,allow_a=false,allow_b=false,allow_a_write=false,allow_a_delete=false,allow_b_write=false,allow_b_delete=false WHERE id=$1 RETURNING email",
       [req.params.id],
     );
     if (!rows[0]) {
       return res.sendStatus(404);
     }
-    if (!(await syncUser(req.params.id))) {
-      return res.redirect("/users?saved=1");
-    }
-    await unlinkControlIdentity(req.params.id);
+    await apiSso.revokeIssued(req.params.id);
     await audit(req, "delete-user", rows[0].email);
-    await pool.query("DELETE FROM session WHERE sess->>'userId'=$1", [req.params.id]);
+    await pool.query("DELETE FROM session WHERE sess->'local'->>'userId'=$1", [req.params.id]);
     await pool.query("DELETE FROM users WHERE id=$1", [req.params.id]);
     res.redirect("/users?saved=1");
   });

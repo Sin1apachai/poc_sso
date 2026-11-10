@@ -8,7 +8,7 @@ function probe(browserId, { silent = false } = {}) {
   }
   const entry = { attempts: 0, maxAttempts: silent ? 1 : 3 };
   entry.promise = checkReadiness({
-    url: config.kcInternalUrl + "/.well-known/openid-configuration",
+    url: config.kcInternalUrl + "/temporary-sso-poc/status",
     issuer: config.kcIssuer,
     maxAttempts: entry.maxAttempts,
     onAttempt: async (n) => {

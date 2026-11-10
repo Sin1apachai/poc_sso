@@ -13,6 +13,12 @@ async function start() {
     helmet({
       contentSecurityPolicy: {
         directives: {
+          frameSrc: [
+            "'self'",
+            "http://localhost:8080",
+            "http://localhost:4001",
+            "http://localhost:4002",
+          ],
           formAction: [
             "'self'",
             "http://localhost:8080",

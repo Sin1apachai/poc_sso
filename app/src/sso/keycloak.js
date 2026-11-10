@@ -33,9 +33,9 @@ async function controlVerifier() {
 }
 const tokenHash = (value) => crypto.createHash("sha256").update(value).digest("base64url");
 
-async function connectionFailed(req, res, { silent = false, json = false } = {}) {
+async function connectionFailed(req, res, { silent = false, json = false, attempts } = {}) {
   if (json) {
-    return res.status(503).json({ available: false, reason: "sso-unavailable" });
+    return res.status(503).json({ available: false, reason: "sso-unavailable", attempts });
   }
   // Reload before saving: another tab may have updated the session during the probe.
   const loaded = await new Promise((resolve) => req.session.reload((error) => resolve(!error)));
@@ -57,7 +57,7 @@ async function startSso(req, res, { silent = false, json = false } = {}) {
   await saveSession(req);
   const result = await probe(req.browserId, { silent });
   if (!result.ok) {
-    return connectionFailed(req, res, { silent, json });
+    return connectionFailed(req, res, { silent, json, attempts: result.attempts });
   }
   try {
     const authorizationUrl = await authorization(req, { silent });
@@ -79,7 +79,6 @@ async function authorization(req, { silent }) {
     state,
     silent,
     flow: "post",
-    createdAt: Date.now(),
   });
   const url = new URL(config.controlPublicUrl + "/sso/authorize");
   url.search = new URLSearchParams({
@@ -95,11 +94,16 @@ async function validateAccessToken(token) {
   const { jose, keys } = await keycloakClient();
   const { payload } = await jose.jwtVerify(token, keys, {
     issuer: config.kcIssuer,
-    audience: config.kcClientId,
+    audience: config.kcAudience,
     algorithms: ["RS256"],
     requiredClaims: ["sub", "jti", "exp", "iat", "email"],
   });
-  if (payload.idp !== "app-control") {
+  if (
+    payload.idp !== config.kcIdpAlias ||
+    payload.azp !== config.kcAuthorityClient ||
+    payload.central_shared !== true ||
+    payload.temporary_identity !== true
+  ) {
     throw new Error("Only App C identities are accepted");
   }
   return payload;
@@ -135,58 +139,45 @@ async function acceptSso(req, res) {
   res.redirect("/login");
 }
 
-// Validate origin/request, verify both signed tokens, then create the local app session.
+// Keycloak signs the token and binds it to the initiating browser request.
 async function acceptPostedToken(req, res) {
-  if (req.headers.origin && req.headers.origin !== config.controlPublicUrl) {
+  if (req.headers.origin && req.headers.origin !== new URL(config.kcIssuer).origin) {
     return res.status(400).send("Invalid SSO origin");
   }
   const body = req.body;
   if (
     typeof body.state !== "string" ||
     typeof body.access_token !== "string" ||
-    typeof body.response !== "string" ||
-    body.iss !== config.controlPublicUrl
-  ) {
+    typeof body.handoff !== "string"
+  )
     return res.status(400).send("Invalid SSO response");
-  }
   const pending = await getPendingRequest(req.browserId, body.state);
-  if (!pending || pending.flow !== "post") {
+  if (!pending || pending.flow !== "post")
     return res.status(400).send("Invalid or used SSO request");
-  }
-  let envelope, claims;
+  let claims, delivery;
   try {
-    const { jose, keys } = await controlVerifier();
-    ({ payload: envelope } = await jose.jwtVerify(body.response, keys, {
-      issuer: config.controlPublicUrl + "/oidc",
+    claims = await validateAccessToken(body.access_token);
+    const { jose, keys } = await keycloakClient();
+    ({ payload: delivery } = await jose.jwtVerify(body.handoff, keys, {
+      issuer: config.kcIssuer,
       audience: config.kcClientId,
       algorithms: ["RS256"],
-      requiredClaims: [
-        "sub",
-        "jti",
-        "iat",
-        "exp",
-        "token_use",
-        "state",
-        "challenge",
-        "token_hash",
-        "token_jti",
-        "issued_ms",
-      ],
-      maxTokenAge: "90s",
+      requiredClaims: ["sub", "jti", "iat", "exp", "token_use", "central_jti", "token_hash"],
+      maxTokenAge: "60s",
     }));
     if (
-      envelope.token_use !== "sso_response" ||
-      envelope.state !== pending.state ||
-      envelope.challenge !== tokenHash(pending.verifier) ||
-      envelope.token_hash !== tokenHash(body.access_token) ||
-      !Number.isSafeInteger(envelope.issued_ms)
-    ) {
+      delivery.token_use !== "sso_handoff" ||
+      delivery.sub !== claims.sub ||
+      delivery.central_jti !== claims.jti ||
+      delivery.token_hash !== tokenHash(body.access_token) ||
+      delivery.exp > claims.exp ||
+      delivery.sso_state !== pending.state ||
+      delivery.sso_challenge !== tokenHash(pending.verifier) ||
+      !Number.isSafeInteger(delivery.source_issued_ms) ||
+      delivery.source_issued_ms > Date.now() + 1000 ||
+      delivery.source_issued_ms < Date.now() - 61000
+    )
       throw Error("Unbound response");
-    }
-    claims = await validateAccessToken(body.access_token);
-    if (claims.sub !== envelope.sub || claims.jti !== envelope.token_jti) {
-      throw Error("Token mismatch");
-    }
   } catch {
     return res.status(400).send("Invalid or expired SSO response");
   }
@@ -208,7 +199,7 @@ async function acceptPostedToken(req, res) {
       "SELECT revoked_before FROM sso_logout_fences WHERE kc_sub=$1",
       [claims.sub],
     );
-    if (rows[0] && envelope.issued_ms <= Number(rows[0].revoked_before)) {
+    if (rows[0] && delivery.source_issued_ms <= Number(rows[0].revoked_before)) {
       return rejectSession(req, res, "session-revoked");
     }
     await regenerateSession(req);
@@ -225,17 +216,11 @@ async function acceptPostedToken(req, res) {
       }),
       accessToken: body.access_token,
       sub: claims.sub,
-      email: claims.email,
-      sid: claims.sid || claims.jti,
-      tokenJti: claims.jti,
-      idp: claims.idp,
       expiresAt: claims.exp,
-      sourceIssuedMs: envelope.issued_ms,
-      authenticatedAt: acceptedAt,
       checkedAt: acceptedAt,
     };
     await saveSession(req);
-    res.redirect(303, "/");
+    res.render("sso-complete", { controlOrigin: config.controlPublicUrl });
   });
 }
 
@@ -281,7 +266,7 @@ async function requireSso(req, res, next) {
       centralSub: req.centralUser.sub,
       centralSid: req.centralUser.sid || req.centralUser.jti,
     });
-    // Each app asks Keycloak about its own token, never another app's session.
+    // Check the shared central token; application sessions remain independent.
     if (
       req.path === "/session/heartbeat" ||
       !req.session.sso.checkedAt ||
@@ -289,12 +274,11 @@ async function requireSso(req, res, next) {
     ) {
       let response;
       try {
-        response = await fetch(config.kcInternalUrl + "/protocol/openid-connect/token/introspect", {
+        response = await fetch(config.kcInternalUrl + "/temporary-sso-poc/introspect", {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: new URLSearchParams({
             token: req.session.sso.accessToken,
-            token_type_hint: "access_token",
             client_id: config.kcClientId,
             client_secret: process.env.KC_CLIENT_SECRET,
           }),
@@ -328,7 +312,6 @@ async function requireSso(req, res, next) {
       return await denyAccess(req, res, "missing-user");
     }
     req.localUser = rows[0];
-    res.locals.ssoRemainingMs = Math.max(0, req.centralUser.exp * 1000 - Date.now());
     next();
   } catch (error) {
     return rejectSession(req, res, "session-invalid");
@@ -393,7 +376,6 @@ async function logout(req, res, next) {
 }
 module.exports = {
   rejectSession,
-  denyAccess,
   heartbeat,
   startSso,
   connectivityStatus: (req, res) => res.json(probeStatus(req.browserId)),

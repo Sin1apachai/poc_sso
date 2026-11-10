@@ -24,14 +24,4 @@ function sessionMiddleware() {
   });
 }
 
-function endSession(req, res, next) {
-  req.session.destroy((error) => {
-    if (error) {
-      return next(error);
-    }
-    res.clearCookie(cookieName, cookieOptions);
-    res.redirect("/login");
-  });
-}
-
-module.exports = { sessionMiddleware, endSession };
+module.exports = { sessionMiddleware };
