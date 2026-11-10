@@ -64,6 +64,61 @@ npm run lab:configure
 
 ภาพ Tokens และ trust C ถ่ายจาก PoC ที่รันวิธีใหม่ ส่วนภาพสร้าง Realm และตำแหน่ง Credentials เป็นภาพอ้างอิงเมนูเดิมที่ไม่มี secret ให้ยึดค่าตามตารางในคู่มือนี้
 
+### ตั้งอายุ token: ค่าบน UI กับอายุที่ extension ใช้จริง
+
+1. เลือก realm **sso-lab** ก่อน เพื่อไม่ให้แก้ค่าใน master ซึ่งใช้บริหาร Keycloak
+2. เปิด **Realm settings → Tokens → Access Token Lifespan**
+3. ระบุจำนวนและหน่วย เช่น **5 Minutes** หรือ **15 Minutes** แล้วกด **Save**
+4. Logout C แล้ว Login C ใหม่ จากนั้นเข้า A/B ผ่าน SSO เพื่อทดสอบ token ที่ออกใหม่
+
+[เปิดหน้า Tokens ของ sso-lab](http://localhost:8080/admin/master/console/#/sso-lab/realm-settings/tokens) หากยังไม่ได้เข้า Admin ระบบจะแสดงหน้า Login ก่อน ตำแหน่ง field ดูภาพอายุ access token ด้านบน
+
+อายุที่ใช้จริงมาจาก [CentralTokenService](../../keycloak/src/main/java/lab/sso/service/CentralTokenService.java) ซึ่งอ่านค่าของ realm แล้วจำกัดระหว่าง 1–900 วินาที:
+
+```java
+int lifetimeSeconds = Math.max(1, Math.min(900, realm.getAccessTokenLifespan()));
+```
+
+| ค่าที่ตั้งใน Access Token Lifespan | อายุ token กลางที่ออกใหม่ | เหตุผล                        |
+| ---------------------------------- | ------------------------- | ----------------------------- |
+| 5 Minutes                          | 300 วินาที                | ต่ำกว่าเพดาน จึงใช้ค่าที่ตั้ง |
+| 15 Minutes                         | 900 วินาที                | เท่ากับเพดานของโค้ด           |
+| 30 Minutes                         | 900 วินาที                | โค้ดจำกัดสูงสุด 15 นาที       |
+
+เพดานนี้เป็นกติกา custom ของ PoC การตั้งเกิน 15 นาทีใน UI อย่างเดียวไม่เพิ่มอายุ ต้องแก้เพดานใน Java และ build/recreate Keycloak ด้วย ค่า 0 ก็ไม่ได้แปลว่าไม่มีวันหมดอายุใน extension นี้ เพราะโค้ดบังคับอย่างน้อย 1 วินาที
+
+[CentralTokenCodec](../../keycloak/src/main/java/lab/sso/security/CentralTokenCodec.java) กำหนดเวลาเป็น Unix timestamp หน่วยวินาที:
+
+```java
+long now = System.currentTimeMillis() / 1000;
+token.iat(now);
+token.exp(now + lifetimeSeconds);
+```
+
+ดังนั้น `exp - iat` คืออายุ token เป็นวินาที และ token หมดอายุเมื่อเวลาปัจจุบันถึง `exp` เมื่อต้องแสดงวันเวลาใน JavaScript ใช้ `new Date(exp * 1000)` เพราะ Date รับหน่วยมิลลิวินาที ตัว timestamp ไม่ผูก timezone แต่การแสดงผลขึ้นกับ timezone ของเครื่อง
+
+ผลของการเปลี่ยนค่าและข้อจำกัดที่ต้องรู้:
+
+- **Save มีผลต่อ token ที่ออกหลังจากนั้น** ไม่แก้ `exp` ของ JWT ใบเดิม และไม่ได้ revoke ใบเดิมเพียงเพราะเปลี่ยนค่า ไม่ต้อง restart เพื่อเปลี่ยนค่าภายในช่วงที่โค้ดยอมรับ
+- **เข้า A/B ไม่เริ่มนับอายุใหม่** เพราะรับ JWT ใบเดียวกับ C เช่น C เหลือ 3 นาที แอป B ที่เพิ่งเข้าก็เหลือ 3 นาทีเช่นกัน
+- **ไม่มี auto-refresh หรือ refresh token** ใน flow นี้ ต้องเริ่มกระบวนการขอ token กลางใหม่เมื่อหมดอายุ
+- **ใช้ค่าของ realm เท่านั้น** โค้ดนี้ไม่ได้อ่าน Client-level Access Token Lifespan override และไม่ได้ใช้ SSO Session Idle/Max เป็นอายุ token หรืออายุ session ของแอป
+- **`npm run lab:configure` ตั้ง Access Token Lifespan กลับเป็น 900 วินาที** ตาม [สคริปต์ตั้งค่า](../../scripts/setup-temporary-sso.cjs) หากแก้ UI เพื่อทดลองแล้วรันสคริปต์นี้ซ้ำ ต้องตรวจค่าอีกครั้ง
+
+### อายุ token กับ heartbeat เป็นคนละค่า
+
+| รายการ                          | กำหนดที่ไหน                                              | ผล                                                                                   |
+| ------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| อายุ token กลาง                 | UI Access Token Lifespan และเพดานใน Java                 | กำหนด exp ของ token                                                                  |
+| รอบ heartbeat A/B               | [app/public/heartbeat.js](../../app/public/heartbeat.js) | Browser เรียกแอปทุก 1 ชั่วโมง เฉพาะหน้าที่ใช้งาน SSO                                 |
+| การตรวจ token ก่อนเข้า resource | [app/src/sso/keycloak.js](../../app/src/sso/keycloak.js) | ตรวจหมดอายุทุกครั้งที่ผ่าน requireSso และเรียก custom introspection เมื่อถึงเงื่อนไข |
+
+Heartbeat ไม่ได้ทำให้ token อายุ 15 นาทีอยู่ได้นาน 1 ชั่วโมง เมื่อหมดอายุแล้ว แอปจะล้าง SSO session ในการตรวจครั้งถัดไป หากเปิดหน้าค้างโดยไม่ส่งคำขอ อาจยังเห็นหน้าเดิมจน heartbeat ทำงาน ไม่ได้แปลว่า token ยัง valid หรือมี timer สั่งเปลี่ยนหน้าทันทีเมื่อครบ 15 นาที
+
+**ถ้า token หมดอายุแล้ว A/B จะปฏิเสธและล้าง session โดยไม่เรียก Keycloak introspection** ดังนั้นเมื่อ token อายุ 15 นาทีและ heartbeat ครั้งแรกอยู่ที่ 1 ชั่วโมง รอบนั้นจะตรวจพบหมดอายุก่อนถึงขั้นเรียก Keycloak ส่วน Logout C ใช้การแจ้ง logout แยกจาก heartbeat
+
+Heartbeat ปัจจุบันตรวจ token กลางกับ Keycloak ผ่าน custom `/temporary-sso-poc/introspect` เมื่อ token ยังไม่หมดอายุ ยังไม่มีงาน Keycloak ตรวจ session/บัญชีต้นทางกลับไปยัง IdP C ทุกหนึ่งชั่วโมง
+
 ## 4. Trust C — แหล่งตัวตนเดียว
 
 ไป **Identity providers** → provider `app-control`
