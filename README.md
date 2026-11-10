@@ -13,11 +13,7 @@
 
 ## คู่มือตั้งค่า Keycloak
 
-- [ตั้งค่าเฉพาะที่จำเป็น 7 ขั้นตอน](docs/keycloak/SETUP-GUIDE.md)
-- [Field และภาพ UI รายละเอียด](docs/keycloak/SETUP-REFERENCE.md)
-- [Feature ที่ใช้และเหตุผลการออกแบบ](docs/keycloak/FEATURES.md)
-
-ภาพใช้ Keycloak 26.8.1 ใน environment ตัวอย่างแยกจาก realm ของคุณ ค่า config อ้างอิงไม่มี secrets และไม่ import อัตโนมัติ
+อ่าน [คู่มือภาษาไทยเล่มเดียว](docs/keycloak/SETUP-GUIDE.md) เริ่มจากหน้าที่ A/B/C และ Keycloak แล้วอธิบาย Realm, IdP, Client, สิทธิ์และกุญแจก่อนพาตั้งค่า UI พร้อมภาพ ไม่ต้องเปิดเอกสาร feature หรือ preflight แยก
 
 ## เอกสาร flow และ API
 
@@ -106,7 +102,7 @@ CLI อ่าน password จาก stdin; ต้องมี 8 ตัวขึ�
 - Logout A/B ออกเฉพาะแอป; Logout C revoke token กลางและส่ง signed notification ให้ A/B ล้าง SSO sessions ส่วน local sessions คงอยู่
 - Heartbeat SSO ทุก 1 ชั่วโมง ไม่มี timer ตรวจ expiry เพิ่ม; คำขอไปยังหน้าที่ป้องกันไว้ตรวจ expiry ด้วย
 
-รายละเอียด: [API flow](docs/keycloak/API-MODE-POC.md), [settings อ้างอิง](docs/keycloak/API-MODE-SETTINGS.json), [heartbeat](docs/keycloak/HOURLY-HEARTBEAT-POC.md)
+รายละเอียด: [คู่มือการทำงานและตั้งค่า Keycloak](docs/keycloak/SETUP-GUIDE.md)
 
 ## ตรวจโค้ดและจัดรูปแบบ
 

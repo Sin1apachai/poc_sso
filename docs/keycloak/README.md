@@ -1,37 +1,5 @@
-# เอกสาร Keycloak ของ SSO PoC
+# เริ่มอ่านคู่มือ Keycloak
 
-| เอกสาร                                             | อ่านเพื่ออะไร                                                                                   |
-| -------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [SETUP-GUIDE.md](SETUP-GUIDE.md)                   | ค่าจำเป็น 7 ขั้นตอน อ่านก่อนตั้งค่า                                                             |
-| [SETUP-REFERENCE.md](SETUP-REFERENCE.md)           | field, ภาพ UI และ troubleshooting แบบละเอียด ใช้อ้างอิงเมื่อสงสัย                               |
-| [FEATURES.md](FEATURES.md)                         | เข้าใจ Realm, IdP, JWT grant, clients, service account, roles/scopes/mappers, keys และ sessions |
-| [API-MODE-SETTINGS.json](API-MODE-SETTINGS.json)   | ดู settings reference แบบไม่มี secrets; ไม่ใช่ไฟล์ import realm                                 |
-| [API-MODE-POC.md](API-MODE-POC.md)                 | ภาพรวมการทำงานของ JWT grant และ token POST                                                      |
-| [HOURLY-HEARTBEAT-POC.md](HOURLY-HEARTBEAT-POC.md) | เงื่อนไข heartbeat ทุก 1 ชั่วโมง                                                                |
-| [AB-PREFLIGHT.md](AB-PREFLIGHT.md)                 | ตรวจ Keycloak ก่อน redirect ออกจาก A/B                                                          |
-| [SSO-RETRY.md](SSO-RETRY.md)                       | สถานะและ retry การเชื่อมต่อของ C                                                                |
-| [Flow และ API](../flows/README.md)                 | sequence diagram, flowchart และจำนวน endpoint/request                                           |
+อ่าน [คู่มือภาษาไทยเล่มเดียว](SETUP-GUIDE.md) จากบนลงล่าง: ภาพรวม → ความหมายของ Realm/IdP/Client/สิทธิ์ → ตัวอย่างผู้ใช้ → ตั้งค่า UI พร้อมภาพ → ตรวจผลและแก้ปัญหา
 
-## ที่มาของภาพและการตรวจสอบ
-
-ภาพ PNG 24 ภาพเป็น Admin Console จริงของ Keycloak 26.8.1 สร้างเมื่อ 10 พฤศจิกายน 2026 จาก container ชั่วคราวที่พอร์ต 18080 แยกจากแล็บจริงพอร์ต 8080 บัญชี guide-admin และ learner@example.test เป็นข้อมูลสมมติ ช่อง client secret ถูกปิดบังในภาพ ไม่มี private key, raw access token หรือ password ของผู้ใช้จริงในเอกสาร
-
-ค่าตามคู่มือผ่านการทดสอบใน instance ชั่วคราว:
-
-- JWT bearer grant ของ app-a, app-b และ app-control สำเร็จ
-- audience และ idp ตรง; app_permissions แยกตามแอป
-- อายุ access token 300 วินาที ไม่ถูกจำกัดเหลือ 60 วินาทีตาม assertion
-- assertion เดิมใช้ซ้ำแล้วได้ HTTP 400
-- introspection active ก่อน revoke และ inactive หลัง revoke
-- service-account client_credentials สำเร็จ โดยใช้ manage-users + view-clients ไม่มี query-users
-- Admin API templates ทั้ง 12 ที่ C ใช้ผ่าน: ค้นหา/สร้าง/ปรับผู้ใช้, อ่าน/ผูก/ถอน identity link, อ่าน clients/roles, อ่าน/เพิ่ม/ถอน/effective role mappings
-
-การทดสอบนี้ไม่แก้ realm ของคุณ ไม่อัปเดต .env จริง และไม่แทน end-to-end Login ของแอปหลังคุณตั้งค่าเองครบแล้ว
-
-## ผลตรวจความจำเป็น
-
-- realm จริงยังมีเฉพาะ built-ins ไม่มี app clients/IdP ให้ลบ จึงไม่แก้ settings ของผู้ใช้
-- ลด query-users ออกจากทั้ง service-account roles และ role scope หลังทดสอบครบ 12 Admin APIs ผ่าน
-- A/B/C ใช้ default profile/email เท่านั้น; sync ใช้ default roles เท่านั้น
-- ย้ายการตั้งค่า Login screen, browser sessions, keys และตัวเลือก diagnostic ออกจากขั้นตอนหลัก ไปไว้เป็นคำอธิบายอ้างอิง
-- คง 4 clients และ 8 mappers เพราะโค้ดปัจจุบันใช้ทั้งหมด การตัด client app-control ต้องแก้ flow bootstrap ของ C ก่อน
+[API-MODE-SETTINGS.json](API-MODE-SETTINGS.json) เป็นข้อมูลอ้างอิงสำหรับผู้พัฒนา ไม่ใช่ไฟล์ import และไม่ต้องเปิดอ่านก่อนตั้งค่า
