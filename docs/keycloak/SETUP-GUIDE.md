@@ -20,7 +20,7 @@
 | Keycloak | เชื่อหลักฐานที่ตรวจลายเซ็นจาก C แล้วออก token กลางสำหรับแต่ละแอป     | บัญชีที่ผูกกับ C, สิทธิ์ที่ sync มา, clients, กุญแจและกฎออก token |
 | ระบบ A/B | ตรวจ token กลาง ตรวจสิทธิ์และบัญชี local แล้วสร้าง session ของตัวเอง | บัญชีและ session แยกของแอปนั้น                                    |
 
-![ภาพรวมหน้าที่ของระบบ](images/00-system-overview.svg)
+![ภาพรวมหน้าที่ของระบบ](images/00-system-overview.png)
 
 ภาพนี้เป็นความสัมพันธ์ของหน้าที่ ไม่ใช่จำนวน HTTP request: Keycloak ส่ง token กลับ C แล้ว C ส่งต่อให้ A/B ผ่าน browser POST ไม่ได้เรียก A/B เพื่อเปิด session ให้เอง
 
@@ -45,7 +45,7 @@ Token เป็นข้อมูลที่ใช้ยืนยันผล�
 
 Realm เป็นขอบเขตที่รวมบัญชี แอป สิทธิ์ IdP และกฎ token ไว้ด้วยกัน เราตั้งชื่อว่า **sso-lab** โดย A/B/C ใช้ realm เดียวกัน ไม่ต้องสร้าง realm แยกต่อแอป
 
-![สิ่งที่อยู่ภายใน Realm](images/00-realm-map.svg)
+![สิ่งที่อยู่ภายใน Realm](images/00-realm-map.png)
 
 ตัวอย่าง issuer ของ realm คือ `http://localhost:8080/realms/sso-lab` คำท้าย URL เป็นชื่อ realm ไม่ใช่ชื่อแอป A หรือ B ถ้าสร้าง client ใน master แต่แอปขอ token จาก sso-lab จะหา client ไม่พบ แม้ใช้ชื่อเดียวกัน
 

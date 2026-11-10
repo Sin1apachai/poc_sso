@@ -59,4 +59,4 @@ C เปิดเฉพาะ GET /oidc/jwks เพื่อเผยแพร�
 
 User / Browser คือ browser ที่ส่ง request จริง ลูกศร backend → backend หมายถึงเรียกจาก server โดยตรง `Redirect` เป็นคำตอบกลับ browser แล้ว browser จึงเปิด URL ใหม่ การตรวจ JWT ภายในแอปไม่ใช่ request ไป Keycloak ทุกครั้ง
 
-Diagram ใช้ Mermaid บน GitHub เปิดแสดงเป็นภาพได้ ส่วน VS Code ต้องใช้ Markdown preview ที่รองรับ Mermaid
+Diagram มีไฟล์ PNG ให้เปิดได้โดยไม่ต้องติดตั้ง Mermaid ส่วน source Mermaid ในเอกสารใช้สำหรับแก้ไขแผนภาพ

@@ -28,7 +28,7 @@ sequenceDiagram
     A-->>U: Dashboard แบบ local
 ```
 
-[เปิดภาพ SVG: F01 sequence](images/f01-sequence.svg)
+[เปิดภาพ PNG: F01 sequence](images/f01-sequence.png)
 
 ```mermaid
 flowchart TD
@@ -39,7 +39,7 @@ flowchart TD
     T --> H[แสดง Dashboard]
 ```
 
-[เปิดภาพ SVG: F01 flowchart](images/f01-flowchart.svg)
+[เปิดภาพ PNG: F01 flowchart](images/f01-flowchart.png)
 
 เส้นหลักที่ผู้ใช้ส่งข้อมูลคือ POST /login **1 ครั้ง**; เส้นทางตัวอย่างเต็มมี browser requests **4 ครั้ง** รวมหน้าเว็บและ redirects Keycloak **0 ครั้ง**
 
@@ -74,7 +74,7 @@ sequenceDiagram
     C-->>U: Dashboard SSO พร้อมใช้งาน
 ```
 
-[เปิดภาพ SVG: F02 sequence](images/f02-sequence.svg)
+[เปิดภาพ PNG: F02 sequence](images/f02-sequence.png)
 
 ```mermaid
 flowchart TD
@@ -91,7 +91,7 @@ flowchart TD
     T -->|ใช่| H[บันทึก token และแสดง SSO พร้อมใช้งาน]
 ```
 
-[เปิดภาพ SVG: F02 flowchart](images/f02-flowchart.svg)
+[เปิดภาพ PNG: F02 flowchart](images/f02-flowchart.png)
 
 Keycloak กรณีสำเร็จปกติ: discovery **1** + token **1** = **2 requests** บวก certs เมื่อ cache ต้องโหลด จำนวน status polling ไม่คงที่ GET /sso/status ไม่ได้เรียก Keycloak ทุกครั้ง
 
@@ -129,7 +129,7 @@ sequenceDiagram
     A-->>U: Dashboard แบบ SSO
 ```
 
-[เปิดภาพ SVG: F03 sequence](images/f03-sequence.svg)
+[เปิดภาพ PNG: F03 sequence](images/f03-sequence.png)
 
 ```mermaid
 flowchart TD
@@ -145,7 +145,7 @@ flowchart TD
     V -->|ใช่| A[สร้าง session ของ A/B และเข้า Dashboard]
 ```
 
-[เปิดภาพ SVG: F03 flowchart](images/f03-flowchart.svg)
+[เปิดภาพ PNG: F03 flowchart](images/f03-flowchart.png)
 
 Token issuance มี **C→Keycloak 1 request**; preflight discovery อีก **1 request** ฝั่ง browser ตามภาพมี **7 requests** ไม่รวม progress polling `/sso/connectivity` และ assets ไม่มี `/sso/redeem` และไม่มี Login introspection
 
@@ -176,7 +176,7 @@ sequenceDiagram
     A-->>U: Dashboard
 ```
 
-[เปิดภาพ SVG: F04 sequence](images/f04-sequence.svg)
+[เปิดภาพ PNG: F04 sequence](images/f04-sequence.png)
 
 ```mermaid
 flowchart TD
@@ -189,7 +189,7 @@ flowchart TD
     C -->|ไม่ และ silent| B[กลับ Login A/B โดยไม่แสดง modal ไม่มีสิทธิ์]
 ```
 
-[เปิดภาพ SVG: F04 flowchart](images/f04-flowchart.svg)
+[เปิดภาพ PNG: F04 flowchart](images/f04-flowchart.png)
 
 เส้นทางพื้นฐาน **browser 4 requests** + **Keycloak 2 requests** (discovery 1 + token 1) บวกกุญแจเมื่อจำเป็น
 
@@ -223,7 +223,7 @@ sequenceDiagram
     A-->>U: explicit แสดง modal ครั้งเดียว ส่วน silent ไม่แสดง modal
 ```
 
-[เปิดภาพ SVG: F05 sequence](images/f05-sequence.svg)
+[เปิดภาพ PNG: F05 sequence](images/f05-sequence.png)
 
 ```mermaid
 flowchart TD
@@ -240,7 +240,7 @@ flowchart TD
     E -->|ไม่| L[Login ไม่มี modal]
 ```
 
-[เปิดภาพ SVG: F05 flowchart](images/f05-flowchart.svg)
+[เปิดภาพ PNG: F05 flowchart](images/f05-flowchart.png)
 
 หลังผ่าน preflight แล้ว: C ปฏิเสธก่อน token → token **0**; A/B ปฏิเสธหลัง token → token **1** ไม่มี API ไปหาแอปอื่นเพื่อสร้าง local account ให้อัตโนมัติ
 
@@ -273,7 +273,7 @@ sequenceDiagram
     end
 ```
 
-[เปิดภาพ SVG: F06 sequence](images/f06-sequence.svg)
+[เปิดภาพ PNG: F06 sequence](images/f06-sequence.png)
 
 ```mermaid
 flowchart TD
@@ -288,7 +288,7 @@ flowchart TD
     E --> L[ไม่ส่ง browser ไปหน้า Keycloak]
 ```
 
-[เปิดภาพ SVG: F06 flowchart](images/f06-flowchart.svg)
+[เปิดภาพ PNG: F06 flowchart](images/f06-flowchart.png)
 
 - explicit A/B และ direct bootstrap C: discovery สูงสุด **3** ครั้ง เว้นช่วง 2 และ 5 วินาที
 - automatic silent A/B: discovery **1** ครั้ง
@@ -328,7 +328,7 @@ sequenceDiagram
     end
 ```
 
-[เปิดภาพ SVG: F07 sequence](images/f07-sequence.svg)
+[เปิดภาพ PNG: F07 sequence](images/f07-sequence.png)
 
 ```mermaid
 flowchart TD
@@ -341,7 +341,7 @@ flowchart TD
     R -->|ติดต่อไม่ได้| W[503 รอรอบถัดไป]
 ```
 
-[เปิดภาพ SVG: F07 flowchart](images/f07-flowchart.svg)
+[เปิดภาพ PNG: F07 flowchart](images/f07-flowchart.png)
 
 Browser heartbeat **1 request ต่อรอบ**; Keycloak introspection **0 หรือ 1** ตามว่า exp ผ่านหรือไม่ ไม่มี timer/focus check เพิ่ม Protected requests ก็ตรวจ exp และ introspect เมื่อเลยช่วงตรวจ 1 ชั่วโมง ส่วน local Login ไม่มี browser heartbeat script นี้
 
@@ -361,7 +361,7 @@ sequenceDiagram
     A-->>U: หน้า Login ไม่เริ่ม silent SSO ซ้ำ
 ```
 
-[เปิดภาพ SVG: F08 sequence](images/f08-sequence.svg)
+[เปิดภาพ PNG: F08 sequence](images/f08-sequence.png)
 
 ```mermaid
 flowchart TD
@@ -371,7 +371,7 @@ flowchart TD
     D --> H[กลับหน้า Login local]
 ```
 
-[เปิดภาพ SVG: F08 flowchart](images/f08-flowchart.svg)
+[เปิดภาพ PNG: F08 flowchart](images/f08-flowchart.png)
 
 Browser **3 requests** ตามภาพ; Keycloak **0** C และแอปอื่นไม่ Logout ตามการกดนี้
 
@@ -403,7 +403,7 @@ sequenceDiagram
     U->>C: GET /login
 ```
 
-[เปิดภาพ SVG: F09 sequence](images/f09-sequence.svg)
+[เปิดภาพ PNG: F09 sequence](images/f09-sequence.png)
 
 ```mermaid
 flowchart TD
@@ -415,7 +415,7 @@ flowchart TD
     O -->|ไม่| E[503 แจ้ง Logout ไม่สำเร็จและคง C session เพื่อ retry]
 ```
 
-[เปิดภาพ SVG: F09 flowchart](images/f09-flowchart.svg)
+[เปิดภาพ PNG: F09 flowchart](images/f09-flowchart.png)
 
 Keycloak revoke **N requests** ตาม token ที่ยังไม่หมดอายุ ไม่เรียก Admin logout หรือขอ service-account token ใน Logout flow แล้ว C→A/B notification **0–2** ตาม client/sub ที่บันทึกไว้ปกติ ถ้ามีหลาย central sub จำนวน notification อาจมากขึ้น
 
@@ -460,7 +460,7 @@ sequenceDiagram
     C-->>U: Redirect /users?saved=1
 ```
 
-[เปิดภาพ SVG: F10 sequence](images/f10-sequence.svg)
+[เปิดภาพ PNG: F10 sequence](images/f10-sequence.png)
 
 ```mermaid
 flowchart TD
@@ -479,7 +479,7 @@ flowchart TD
     M -->|API error| F
 ```
 
-[เปิดภาพ SVG: F10 flowchart](images/f10-flowchart.svg)
+[เปิดภาพ PNG: F10 flowchart](images/f10-flowchart.png)
 
 Sync enabled user ที่มีบัญชี/link/roles ตรงอยู่แล้วใช้ Admin API **11 requests** ไม่รวม service-account token ที่ cache ไว้ได้ หากสร้างบัญชีใหม่เพิ่ม POST user + GET lookup อีกครั้ง และเพิ่ม POST link เมื่อยังไม่มี การเปลี่ยนแต่ละ role เพิ่ม POST หรือ DELETE ต่อ role จริง
 
