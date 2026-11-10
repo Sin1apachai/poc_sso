@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title><%= systemName %></title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <% if(authMode === "sso"){ %>
+    <script src="/heartbeat.js" defer></script>
+    <% } %>
+    <main>
+      <small><%= systemId %> · <%= authMode === "local" ? "LOCAL LOGIN" : "CENTRAL SSO" %></small>
+      <h1><%= systemName %></h1>
+      <p>คุณกำลังใช้งานระบบนี้ด้วยบัญชี
+        <br>
+        <strong><%= email %></strong>
+      </p>
+      <p>Token ของระบบนี้: <strong><%= appTokenIssued ? 'สร้างและตรวจสอบแล้ว' : 'ยังไม่มี' %>
+        </strong>
+        <br>Token กลาง Keycloak: <strong>
+          <%= centralTokenIssued ? 'ตรวจสอบแล้ว' : 'ไม่ใช้สำหรับ Login ปกติ' %></strong>
+      </p>
+      <p>ช่องทาง Login: <strong><%= authMode === "local" ? "บัญชีของระบบนี้" : "App C / SSO" %>
+        </strong>
+      </p>
+      <% if(authMode === "sso"){ %>
+      <p>ยืนยันตัวตนจาก: <strong><%= idp %></strong>
+        <br>สิทธิ์ระบบนี้: <%= permissions.join(', ') %>
+      </p>
+      <% } %>
+      <p>
+        <a href="<%= otherAppUrl %>/sso">เปิดอีกระบบผ่าน SSO →</a>
+      </p>
+      <p>
+        <a href="/sso">เข้าสู่ระบบด้วย App C</a>
+      </p>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf" value="<%= csrf %>">
+        <button type="submit">ออกจากระบบนี้</button>
+      </form>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,152 @@
+name: keycloak-sso-lab
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: [start-dev]
+    environment:
+      KC_HOSTNAME: http://localhost:8080
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin-local-demo
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+  app-a:
+    image: sso-shared-app:local
+    build: ./app
+    ports:
+      - "127.0.0.1:${APP_A_PORT}:4001"
+    environment:
+      NODE_ENV: production
+      PORT: 4001
+      SYSTEM_ID: ${APP_A_SYSTEM_ID}
+      SYSTEM_NAME: ${APP_A_SYSTEM_NAME}
+      PUBLIC_URL: ${APP_A_PUBLIC_URL}
+      OTHER_APP_URL: ${APP_A_OTHER_APP_URL}
+      SESSION_COOKIE_NAME: ${APP_A_COOKIE_NAME}
+      SESSION_SECRET: ${APP_A_SESSION_SECRET}
+      DB_HOST: postgres
+      DB_NAME: ${APP_A_DB_NAME}
+      DB_USER: ${APP_A_DB_USER}
+      DB_PASSWORD: ${APP_A_DB_PASSWORD}
+      KC_ISSUER: ${KC_ISSUER}
+      KC_INTERNAL_URL: ${KC_INTERNAL_URL}
+      CONTROL_INTERNAL_URL: http://app-control:4003
+      CONTROL_PUBLIC_URL: http://localhost:4003
+      KC_CLIENT_ID: ${APP_A_KC_CLIENT_ID}
+      KC_CLIENT_SECRET: ${APP_A_KC_CLIENT_SECRET}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+  app-b:
+    image: sso-shared-app:local
+    build: ./app
+    ports:
+      - "127.0.0.1:${APP_B_PORT}:4001"
+    environment:
+      NODE_ENV: production
+      PORT: 4001
+      SYSTEM_ID: ${APP_B_SYSTEM_ID}
+      SYSTEM_NAME: ${APP_B_SYSTEM_NAME}
+      PUBLIC_URL: ${APP_B_PUBLIC_URL}
+      OTHER_APP_URL: ${APP_B_OTHER_APP_URL}
+      SESSION_COOKIE_NAME: ${APP_B_COOKIE_NAME}
+      SESSION_SECRET: ${APP_B_SESSION_SECRET}
+      DB_HOST: postgres
+      DB_NAME: ${APP_B_DB_NAME}
+      DB_USER: ${APP_B_DB_USER}
+      DB_PASSWORD: ${APP_B_DB_PASSWORD}
+      KC_ISSUER: ${KC_ISSUER}
+      KC_INTERNAL_URL: ${KC_INTERNAL_URL}
+      CONTROL_INTERNAL_URL: http://app-control:4003
+      CONTROL_PUBLIC_URL: http://localhost:4003
+      KC_CLIENT_ID: ${APP_B_KC_CLIENT_ID}
+      KC_CLIENT_SECRET: ${APP_B_KC_CLIENT_SECRET}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      postgres:
+        condition: service_healthy
+  app-control:
+    build: ./app-control
+    ports:
+      - "127.0.0.1:4003:4003"
+    environment:
+      NODE_ENV: production
+      PORT: 4003
+      SYSTEM_ID: app-control
+      SYSTEM_NAME: App Control
+      PUBLIC_URL: http://localhost:4003
+      SESSION_SECRET: ${CONTROL_SESSION_SECRET}
+      DB_HOST: postgres
+      DB_NAME: app_control
+      DB_USER: app_control_user
+      DB_PASSWORD: ${CONTROL_DB_PASSWORD}
+      OIDC_ISSUER: http://localhost:4003/oidc
+      OIDC_JWKS_FILE: /run/secrets/oidc-jwks.json
+      APP_A_KC_CLIENT_SECRET: ${APP_A_KC_CLIENT_SECRET}
+      APP_B_KC_CLIENT_SECRET: ${APP_B_KC_CLIENT_SECRET}
+      KC_CLIENT_SECRET: ${CONTROL_KC_CLIENT_SECRET}
+      KC_ISSUER: ${KC_ISSUER}
+      KC_INTERNAL_URL: ${KC_INTERNAL_URL}
+      KC_SYNC_CLIENT_ID: app-control-sync
+      KC_SYNC_CLIENT_SECRET: ${CONTROL_SYNC_CLIENT_SECRET}
+    volumes:
+      - ./secrets/app-control-jwks.json:/run/secrets/oidc-jwks.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:17
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      CONTROL_DB_PASSWORD: ${CONTROL_DB_PASSWORD}
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      APP_A_DB_PASSWORD: ${APP_A_DB_PASSWORD}
+      APP_B_DB_PASSWORD: ${APP_B_DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  keycloak_data:
+  postgres_data:

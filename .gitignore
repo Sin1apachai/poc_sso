@@ -1,0 +1,14 @@
+# Local configuration and private data
+.env
+.env.*
+!.env.example
+secrets/*
+!secrets/.gitignore
+!secrets/README.md
+**/node_modules/
+work/
+outputs/
+**/__pycache__/
+*.pyc
+*.log
+.DS_Store

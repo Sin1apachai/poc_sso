@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>กำลังเข้าสู่ระบบ</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body class="login-page">
+    <main class="login-card">
+      <h1>กำลังเข้าสู่ระบบ</h1>
+      <p>กำลังส่งผลยืนยันตัวตนไปยังแอปของคุณ</p>
+      <form id="sso-response" method="post" action="<%= callback %>">
+        <input type="hidden" name="state" value="<%= state %>">
+        <input type="hidden" name="iss" value="<%= issuer %>">
+        <input type="hidden" name="access_token" value="<%= accessToken %>">
+        <input type="hidden" name="response" value="<%= response %>">
+        <noscript>
+          <button type="submit">ดำเนินการต่อ</button>
+        </noscript>
+      </form>
+    </main>
+    <script src="/sso-post.js" defer></script>
+  </body>
+</html>

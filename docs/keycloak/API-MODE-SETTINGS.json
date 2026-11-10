@@ -1,0 +1,116 @@
+{
+  "mode": "JWT Authorization Grant (C-only IdP)",
+  "idp": {
+    "issuer": "http://localhost:4003/oidc",
+    "jwksUrl": "http://app-control:4003/oidc/jwks",
+    "jwtAuthorizationGrantEnabled": "true",
+    "jwtAuthorizationGrantAssertionReuseAllowed": "false",
+    "jwtAuthorizationGrantMaxAllowedAssertionExpiration": "60",
+    "jwtAuthorizationGrantAssertionSignatureAlg": "RS256",
+    "jwtAuthorizationGrantLimitAccessTokenExp": "false",
+    "providerId": "jwt-authorization-grant",
+    "useJwksUrl": "true"
+  },
+  "clients": {
+    "app-a": {
+      "standardFlowEnabled": false,
+      "jwtGrantEnabled": "true",
+      "allowedIdp": "app-control",
+      "tokenLifetimeOverride": null,
+      "mappers": [
+        {
+          "name": "control-permissions",
+          "type": "oidc-usermodel-client-role-mapper"
+        },
+        {
+          "name": "control-source-idp",
+          "type": "oidc-hardcoded-claim-mapper"
+        },
+        {
+          "name": "control-audience",
+          "type": "oidc-audience-mapper"
+        }
+      ],
+      "clientAuthentication": true,
+      "fullScopeAllowed": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "defaultClientScopes": ["profile", "email", "roles"],
+      "roleScope": ["app-a/read", "app-a/write", "app-a/delete"]
+    },
+    "app-b": {
+      "standardFlowEnabled": false,
+      "jwtGrantEnabled": "true",
+      "allowedIdp": "app-control",
+      "tokenLifetimeOverride": null,
+      "mappers": [
+        {
+          "name": "control-source-idp",
+          "type": "oidc-hardcoded-claim-mapper"
+        },
+        {
+          "name": "control-permissions",
+          "type": "oidc-usermodel-client-role-mapper"
+        },
+        {
+          "name": "control-audience",
+          "type": "oidc-audience-mapper"
+        }
+      ],
+      "clientAuthentication": true,
+      "fullScopeAllowed": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "defaultClientScopes": ["profile", "email", "roles"],
+      "roleScope": ["app-b/read", "app-b/write", "app-b/delete"]
+    },
+    "app-control": {
+      "standardFlowEnabled": false,
+      "jwtGrantEnabled": "true",
+      "allowedIdp": "app-control",
+      "tokenLifetimeOverride": null,
+      "mappers": [
+        {
+          "name": "control-source-idp",
+          "type": "oidc-hardcoded-claim-mapper"
+        },
+        {
+          "name": "control-audience",
+          "type": "oidc-audience-mapper"
+        }
+      ],
+      "clientAuthentication": true,
+      "fullScopeAllowed": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "defaultClientScopes": ["profile", "email", "roles"],
+      "roleScope": []
+    },
+    "app-control-sync": {
+      "clientAuthentication": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "jwtGrantEnabled": "false",
+      "defaultClientScopes": ["profile", "email", "roles"],
+      "serviceAccountRoles": [
+        "realm-management/query-users",
+        "realm-management/manage-users",
+        "realm-management/view-clients"
+      ],
+      "roleScope": [
+        "realm-management/query-users",
+        "realm-management/manage-users",
+        "realm-management/view-clients"
+      ]
+    }
+  },
+  "realmAccessTokenSeconds": 300,
+  "referenceOnly": true,
+  "note": "Reference configuration validated on a separate Keycloak 26.8.1 instance; no automatic import and no client secrets."
+}

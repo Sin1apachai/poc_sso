@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+work
+outputs
+secrets
+setup
+scripts/legacy
+docs/keycloak/archive
+.env*
+package-lock.json
+**/package-lock.json
+**/*.ejs
+
+
+# Generated diagram artifacts
+docs/flows/images/

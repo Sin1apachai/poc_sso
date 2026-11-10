@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>เข้าสู่<%= systemName %></title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <main>
+      <small><%= systemId %> · KEYCLOAK CLIENT</small>
+      <h1>เข้าสู่<%= systemName %></h1>
+      <% if(loginNotice){ %>
+      <p class="error" role="alert">
+        <%= loginNotice === 'login-failed' ? 'เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่' : 'เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่' %>
+      </p>
+      <% } %>
+      <p>ใช้บัญชีของระบบนี้ หรือเลือกเข้าสู่ระบบด้วย App C</p>
+      <% if(error){ %>
+      <p class="error" role="alert">ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง</p>
+      <% } %>
+      <form method="post" action="/login">
+        <input type="hidden" name="csrf" value="<%= csrf %>">
+        <label for="email">ชื่อผู้ใช้หรืออีเมลของระบบนี้</label>
+        <input id="email" name="email" required autocomplete="username">
+        <label for="password">รหัสผ่าน</label>
+        <input id="password" name="password" type="password" required
+          autocomplete="current-password">
+        <button type="submit">เข้าสู่ระบบปกติ</button>
+      </form>
+      <hr>
+      <p>หรือเข้าสู่ระบบแบบ Single Sign-On</p>
+      <p>
+        <a class="button" data-sso-link href="/sso">เข้าสู่ระบบด้วย App C</a>
+      </p>
+      <p id="sso-connection-status" role="status" aria-live="polite">
+        <%= ssoUnavailable ? 'SSO ไม่พร้อมใช้งานในขณะนี้ ยังสามารถ Login ปกติได้' : '' %></p>
+    </main>
+    <% if(connectionError){ %>
+    <dialog id="sso-unavailable">
+      <h2>SSO ไม่พร้อมใช้งาน</h2>
+      <p>ไม่สามารถเชื่อมต่อ SSO ได้ กรุณาลองใหม่หรือติดต่อผู้ดูแลระบบ</p>
+      <form method="dialog">
+        <button autofocus>ตกลง</button>
+      </form>
+    </dialog>
+    <% } %>
+    <script src="/sso-login.js" defer></script>
+    <% if(accessDenied){ %>
+    <dialog id="access-denied" aria-labelledby="access-denied-title">
+      <h2 id="access-denied-title">
+        <%= accessDenied === 'missing-user' ? 'ไม่มีผู้ใช้ที่ตรงกัน' : 'ไม่มีสิทธิ' %></h2>
+      <p>
+        <%= accessDenied === 'missing-user' ? 'ไม่พบบัญชีผู้ใช้ที่ตรงกันในระบบนี้ กรุณาติดต่อผู้ดูแลระบบ' : 'บัญชีนี้ไม่มีสิทธิเข้าใช้งานระบบนี้ กรุณาติดต่อผู้ดูแลระบบ' %>
+      </p>
+      <form method="dialog">
+        <button autofocus>ตกลง</button>
+      </form>
+    </dialog>
+    <script src="/login.js" defer></script>
+    <% } %>
+  </body>
+</html>

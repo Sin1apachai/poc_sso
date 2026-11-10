@@ -1,0 +1,62 @@
+<%- include('header',{title:'ภาพรวม'}) %>
+<p class="eyebrow">CONTROL CENTER</p>
+<h1>สวัสดี <%= user.username %></h1>
+<p class="muted">บัญชี <%= user.email %> · เลือกระบบที่คุณมีสิทธิ์เข้าใช้งาน</p>
+<% if(user.is_admin){ %>
+<section class="banner">
+  <div>
+    <h2>จัดการการเข้าถึงจากที่เดียว</h2>
+    <p>เพิ่มผู้ใช้ แล้วเลือกสิทธิ์เข้า A และ B ได้ด้วยช่องติ๊ก</p>
+  </div>
+  <a class="button primary" href="/users">จัดการผู้ใช้ →</a>
+</section>
+<% } %>
+<section id="sso-panel" class="banner" data-status="<%= ssoState.status %>"
+  data-message="<%= ssoDisplay.message %>" data-notice="<%= showSsoNotice ? '1':'0' %>">
+  <div>
+    <h2>Single Sign-On</h2>
+    <p id="sso-status" role="status" aria-live="polite"><%= ssoDisplay.label %></p>
+    <p id="sso-status-note" <%= ssoDisplay.note ? '' : 'hidden' %>><%= ssoDisplay.note %></p>
+  </div>
+  <form method="post" action="/sso/retry">
+    <input type="hidden" name="csrf" value="<%= csrf %>">
+    <button id="sso-retry" class="button primary"
+      <%= ['checking','ready','redirecting'].includes(ssoState.status)?'disabled':'' %>>
+      <%= ssoDisplay.buttonLabel %></button>
+  </form>
+  <form id="sso-continue" method="post" action="/sso/continue">
+    <input type="hidden" name="csrf" value="<%= csrf %>">
+    <noscript>
+      <button>ดำเนินการสร้าง SSO</button>
+    </noscript>
+  </form>
+</section>
+<section class="systems">
+  <% for(const system of [{id:'app-a',name:'A',allowed:user.allow_a},{id:'app-b',name:'B',allowed:user.allow_b}]){ %>
+  <article class="system-card">
+    <span class="system-icon"><%= system.name %></span>
+    <h2>ระบบ <%= system.name %></h2>
+    <p>Application <%= system.name %></p>
+    <% if(user.enabled && system.allowed && user.sync_status==='synced'){ %>
+    <a class="button primary" data-system-link href="/connect/<%= system.id %>">เข้าสู่ระบบ
+      <%= system.name %> →</a>
+    <% }else{ %>
+    <span class="badge">ยังไม่มีสิทธิ์ หรือรอซิงก์</span>
+    <% } %>
+  </article>
+  <% } %>
+</section>
+<% if(user.sync_status!=='synced'){ %>
+<p class="alert error"> สิทธิ์ยังซิงก์ไม่สำเร็จ กรุณาติดต่อผู้ดูแล</p>
+<% } %>
+<dialog id="sso-modal" aria-labelledby="sso-modal-title">
+  <h2 id="sso-modal-title">สถานะ SSO</h2>
+  <p id="sso-modal-message"></p>
+  <form method="dialog">
+    <button autofocus>ตกลง</button>
+  </form>
+</dialog>
+<script src="/sso-status.js" defer></script>
+</main>
+</body>
+</html>

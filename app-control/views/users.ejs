@@ -1,0 +1,132 @@
+<%- include('header',{title:'ผู้ใช้และสิทธิ์ระบบ'}) %>
+<%
+const systems = [
+  { name: "A", key: "allow_a" },
+  { name: "B", key: "allow_b" },
+];
+const actions = ["read", "write", "delete"];
+const field = (system, action) =>
+  action === "read" ? system.key : system.key + "_" + action;
+%>
+<p class="eyebrow">USER MANAGEMENT</p>
+<h1>ผู้ใช้และสิทธิ์ระบบ</h1>
+<p class="muted">เลือกสิทธิ์แยกตามระบบ: read สำหรับเข้าใช้และอ่านข้อมูล, write สำหรับเขียนข้อมูล,
+  delete สำหรับลบข้อมูล สิทธิ์ที่บันทึกจะมีผลใน token ที่ออกใหม่</p>
+<% if(notice){ %>
+<p class="alert success" role="status"><%= notice %></p>
+<% } %>
+<section class="panel">
+  <h2>เพิ่มผู้ใช้</h2>
+  <form method="post" action="/users" class="create-grid">
+    <input type="hidden" name="csrf" value="<%= csrf %>">
+    <label>ชื่อผู้ใช้
+      <input name="username" required pattern="[a-zA-Z0-9_.-]{2,60}" autocomplete="off">
+    </label>
+    <label>อีเมล
+      <input name="email" type="email" required>
+    </label>
+    <label>รหัสผ่าน C
+      <input name="password" type="password" required minlength="6" autocomplete="new-password">
+    </label>
+    <div class="system-permissions">
+      <% for(const system of systems){ %>
+      <fieldset class="permission-options">
+        <legend>ระบบ <%= system.name %></legend>
+        <% for(const action of actions){ %>
+        <label class="check">
+          <input type="checkbox" name="<%= field(system,action) %>"> <%= action %>
+        </label>
+        <% } %>
+      </fieldset>
+      <% } %>
+    </div>
+    <button class="primary">เพิ่มผู้ใช้</button>
+  </form>
+</section>
+<section class="panel">
+  <div class="section-title">
+    <h2>ผู้ใช้ทั้งหมด</h2>
+    <span class="badge"><%= users.length %> บัญชี</span>
+  </div>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>ผู้ใช้</th>
+          <th>รหัสผ่านใหม่ C</th>
+          <th>สถานะ</th>
+          <th>ระบบ A</th>
+          <th>ระบบ B</th>
+          <th>การซิงก์</th>
+          <th>จัดการ</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% users.forEach(user=>{ %>
+        <tr>
+          <td>
+            <form id="edit-<%= user.id %>" method="post" action="/users/<%= user.id %>">
+              <input type="hidden" name="csrf" value="<%= csrf %>">
+            </form>
+            <input form="edit-<%= user.id %>" name="username" value="<%= user.username %>" required
+              aria-label="ชื่อผู้ใช้ <%= user.username %>">
+            <small><%= user.email %></small>
+            <% if(user.is_admin){ %>
+            <span class="badge admin"> ผู้ดูแล</span>
+            <% } %>
+          </td>
+          <td>
+            <input form="edit-<%= user.id %>" name="password" type="password"
+              placeholder="เว้นว่างเพื่อใช้เดิม" autocomplete="new-password"
+              aria-label="รหัสผ่านใหม่ของ <%= user.username %>">
+          </td>
+          <td>
+            <label class="check">
+              <input form="edit-<%= user.id %>" type="checkbox" name="enabled"
+                <%= user.enabled?'checked':'' %>> ใช้งาน
+            </label>
+          </td>
+          <% for(const system of systems){ %>
+          <td>
+            <div class="permission-options">
+              <% for(const action of actions){ const key=field(system,action); %>
+              <label class="check">
+                <input form="edit-<%= user.id %>" type="checkbox" name="<%= key %>"
+                  <%= user[key]?'checked':'' %>
+                  aria-label="สิทธิ์ <%= action %> ระบบ <%= system.name %> ของ <%= user.username %>">
+                <%= action %>
+              </label>
+              <% } %>
+            </div>
+          </td>
+          <% } %>
+          <td>
+            <span class="badge <%= user.sync_status==='synced'?'ok':'pending' %>">
+              <%= user.sync_status==='synced'?'สำเร็จ':user.sync_status==='pending'?'รอซิงก์':'ไม่สำเร็จ' %>
+            </span>
+            <% if(user.sync_error){ %>
+            <small class="error-text"><%= user.sync_error %> </small>
+            <% } %>
+          </td>
+          <td class="actions">
+            <button form="edit-<%= user.id %>" class="primary">บันทึก</button>
+            <form method="post" action="/users/<%= user.id %>/sync">
+              <input type="hidden" name="csrf" value="<%= csrf %>">
+              <button class="quiet">ซิงก์อีกครั้ง</button>
+            </form>
+            <% if(String(user.id)!==String(currentUser.id)){ %>
+            <form method="post" action="/users/<%= user.id %>/delete">
+              <input type="hidden" name="csrf" value="<%= csrf %>">
+              <button class="danger">ลบผู้ใช้</button>
+            </form>
+            <% } %>
+          </td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</section>
+</main>
+</body>
+</html>

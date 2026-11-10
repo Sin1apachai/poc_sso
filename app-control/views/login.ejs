@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Login · App Control</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body class="login-page">
+    <main class="login-card">
+      <div class="brand">C<span>APP CONTROL</span>
+      </div>
+      <h1>เข้าสู่ระบบด้วย App C</h1>
+      <% if (loginNotice) { %>
+      <p class="alert error" role="alert">เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่</p>
+      <% } %>
+      <% if (error) { %>
+      <p class="alert error" role="alert"><%= error %></p>
+      <% } %>
+      <p>เข้าสู่ App Control เพื่อจัดการผู้ใช้และสิทธิ์</p>
+      <form method="post" action="/login">
+        <input type="hidden" name="csrf" value="<%= csrf %>">
+        <% if (apiLoginRequestId) { %>
+        <input type="hidden" name="sso_request" value="<%= apiLoginRequestId %>">
+        <% } %>
+        <label for="login">ชื่อผู้ใช้หรืออีเมล</label>
+        <input id="login" name="login" required autocomplete="username">
+        <label for="password">รหัสผ่าน</label>
+        <input id="password" name="password" type="password" required
+          autocomplete="current-password">
+        <button class="primary full" type="submit">เข้าสู่ระบบ</button>
+      </form>
+    </main>
+  </body>
+</html>

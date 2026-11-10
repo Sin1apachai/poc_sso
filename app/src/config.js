@@ -1,0 +1,13 @@
+module.exports = {
+  controlPublicUrl: process.env.CONTROL_PUBLIC_URL || "http://localhost:4003",
+  controlInternalUrl: process.env.CONTROL_INTERNAL_URL || "http://app-control:4003",
+  systemName: process.env.SYSTEM_NAME || "ระบบ",
+  systemId: process.env.SYSTEM_ID || "app",
+  port: Number(process.env.PORT || 4001),
+  cookieName: process.env.SESSION_COOKIE_NAME || "app_session",
+  publicUrl: process.env.PUBLIC_URL,
+  otherAppUrl: process.env.OTHER_APP_URL,
+  kcIssuer: process.env.KC_ISSUER,
+  kcInternalUrl: process.env.KC_INTERNAL_URL,
+  kcClientId: process.env.KC_CLIENT_ID,
+};

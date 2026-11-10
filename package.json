@@ -1,0 +1,18 @@
+{
+  "name": "poc-sso",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Single-IdP SSO lab with Keycloak and independent app sessions",
+  "scripts": {
+    "format": "node scripts/format-templates.cjs && prettier --write .",
+    "format:check": "node scripts/format-templates.cjs --check && prettier --check .",
+    "check": "node scripts/check-source.cjs",
+    "test": "node scripts/test-sso-readiness.cjs && node scripts/test-ab-readiness.cjs && node scripts/test-signing-keys.cjs",
+    "keys:generate": "node scripts/generate-keys.cjs"
+  },
+  "devDependencies": {
+    "js-beautify": "1.15.4",
+    "playwright-core": "1.56.1",
+    "prettier": "3.6.2"
+  }
+}
