@@ -135,3 +135,5 @@ docs/keycloak/             # feature/settings พร้อมเหตุผล
 โค้ดที่เหลือยึด flow ปัจจุบัน: token กลางใบเดียวร่วม C/A/B, session ของแต่ละแอปแยกกัน และสถานะ C ใช้ idle/checking/success/failed เท่านั้น สคริปต์ตั้งค่า สร้างกุญแจ สร้างบัญชี และทดสอบยังใช้สำหรับเปิดและตรวจแล็บ
 
 กรณีเริ่ม SSO ที่ A/B แล้ว Login C สำเร็จ C ส่งหน้าส่งต่อ proof จาก POST /login ได้ทันที ไม่ redirect กลับมาเรียก C เพิ่มอีกครั้ง คำขอ SSO ถูกใช้ได้ครั้งเดียวและยังผูกกับ session ก่อน Login แม้จะเปลี่ยน session ID แล้ว
+
+อ่านโครงสร้างและหน้าที่คลาส Java ที่ [คู่มือส่วนขยาย Keycloak](keycloak/README.md)

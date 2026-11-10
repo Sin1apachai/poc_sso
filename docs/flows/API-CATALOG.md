@@ -1,6 +1,6 @@
 # API ของ PoC จริง และจำนวน Request
 
-อ้างอิง `app/src/routes.js`, `app-control/src/routes.js` และ `keycloak/src/main/java/lab/sso/TemporarySsoResource.java` ไม่ใช่ routes ของตัวจำลอง
+อ้างอิง `app/src/routes.js`, `app-control/src/routes.js` และ `keycloak/src/main/java/lab/sso/web/CentralSsoResource.java` ไม่ใช่ routes ของตัวจำลอง
 
 1 endpoint = method + path template Response ไม่นับเป็น request ใหม่ Redirect จะเกิด request เพิ่มเมื่อ browser ตาม URL จำนวนครั้งขึ้นกับ cache, polling และ retry
 
@@ -129,7 +129,7 @@ Proof bootstrap มี C subject, email, app_permissions และ bootstrap_gen
 
 Token กลางมี issuer/signature ของ Keycloak, stable sub จาก issuer+subject C, aud กลุ่ม SSO จาก config, azp ของ C, exp/iat/jti, email, idp, app_permissions รวม, central_shared และ temporary_identity ส่วน state/challenge, source_issued_ms, central_jti และ token_hash อยู่ในหลักฐาน handoff ที่มี aud ของแอปผู้รับ ไม่มีรหัสผ่าน ไม่มี native Keycloak sid หรือ refresh token sub ไม่ใช่ user row ID ใน Keycloak
 
-ดู [ส่วนขยาย](../../keycloak/src/main/java/lab/sso/TemporarySsoResource.java), [C proof/logout](../../app-control/src/sso/api-sso.js), [A/B callback](../../app/src/sso/keycloak.js) และ [ผลทดสอบ](TEST-RESULTS.json)
+ดู [ส่วนขยาย](../../keycloak/src/main/java/lab/sso/web/CentralSsoResource.java), [C proof/logout](../../app-control/src/sso/api-sso.js), [A/B callback](../../app/src/sso/keycloak.js) และ [ผลทดสอบ](TEST-RESULTS.json)
 
 ## เมนู SSO Tokens — Admin API เพิ่ม 1 เส้น
 
