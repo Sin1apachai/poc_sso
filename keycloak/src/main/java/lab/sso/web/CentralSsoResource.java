@@ -94,7 +94,8 @@ public class CentralSsoResource {
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.APPLICATION_JSON)
     public Response logoutUser(@FormParam("assertion") String assertion) {
-        return json(Map.of("revoked", tokenService.revokeUserTokens(assertion)));
+        int revoked = tokenService.revokeUserTokens(assertion);
+        return json(Map.of("revoked", revoked, "logout_urls", tokenService.getLogoutUrls()));
     }
 
     private Response json(Object value) {

@@ -1,8 +1,6 @@
 package lab.sso.heartbeat;
 
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -23,6 +21,7 @@ public final class IdentityProviderHeartbeatTask implements ScheduledTask {
     private static final Logger LOG = System.getLogger(IdentityProviderHeartbeatTask.class.getName());
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(3)).followRedirects(HttpClient.Redirect.NEVER).build();
+    private final HeartbeatProbe heartbeatProbe = new HeartbeatProbe(httpClient);
     private final Map<String, ProbeState> states = new HashMap<>();
 
     @Override
@@ -48,7 +47,7 @@ public final class IdentityProviderHeartbeatTask implements ScheduledTask {
     }
 
     private void checkRealm(KeycloakSession session, RealmModel realm) {
-        IdpHeartbeatSettings settings = IdpHeartbeatSettings.fromRealm(realm);
+        IdpHeartbeatSettings settings = IdpHeartbeatSettings.fromRealm(session, realm);
         TemporaryTokenRepository repository = new TemporaryTokenRepository(session, realm);
         if (!settings.enabled()) {
             repository.markIdentityProviderAvailable();
@@ -62,9 +61,10 @@ public final class IdentityProviderHeartbeatTask implements ScheduledTask {
             state.lastCheckedMillis = 0;
             state.failures = 0;
         }
-        if (now - state.lastCheckedMillis < settings.intervalSeconds() * 1000L) return;
+        int intervalSeconds = settings.nextCheckIntervalSeconds(state.failures, state.down);
+        if (now - state.lastCheckedMillis < intervalSeconds * 1000L) return;
         state.lastCheckedMillis = now;
-        boolean healthy = isHealthy(settings);
+        boolean healthy = heartbeatProbe.check(settings.healthUrl(), HeartbeatProbe.Source.SCHEDULED).healthy();
         if (healthy) {
             state.failures = 0;
             if (state.down) LOG.log(Level.INFO, "IdP recovered for realm {0}", realm.getName());
@@ -75,30 +75,26 @@ public final class IdentityProviderHeartbeatTask implements ScheduledTask {
                 if (!state.down) {
                     state.down = true;
                     state.logoutCutoffMillis = System.currentTimeMillis();
-                    state.pendingClients.clear();
-                    new RealmSsoConfiguration(session, realm).describeSsoClients()
-                            .forEach(client -> state.pendingClients.add(client.get("clientId")));
-                    LOG.log(Level.WARNING, "IdP unavailable for realm {0}; revoking central tokens and notifying clients", realm.getName());
+                    state.pendingTargets.clear();
+                    state.deliveredTargets.clear();
+                    state.pendingTargets.addAll(new RealmSsoConfiguration(session, realm).getLogoutUrls());
+                    LOG.log(Level.WARNING, "IdP unavailable for realm {0}; revoking central tokens and notifying logout endpoints", realm.getName());
                 }
                 repository.markIdentityProviderUnavailable(state.logoutCutoffMillis);
             }
         }
-        IdentityProviderLogoutService logout = new IdentityProviderLogoutService(session, realm, httpClient);
-        state.pendingClients.removeIf(clientId -> logout.notifyClient(clientId, state.logoutCutoffMillis));
-        if (healthy) repository.markIdentityProviderAvailable();
-    }
-
-    private boolean isHealthy(IdpHeartbeatSettings settings) {
-        try {
-            HttpRequest request = HttpRequest.newBuilder(settings.healthUrl()).timeout(Duration.ofSeconds(3)).GET().build();
-            int status = httpClient.send(request, HttpResponse.BodyHandlers.discarding()).statusCode();
-            return status >= 200 && status < 300;
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            return false;
-        } catch (Exception error) {
-            return false;
+        if (state.down || !state.pendingTargets.isEmpty()) {
+            Set<String> configured = new LinkedHashSet<>(new RealmSsoConfiguration(session, realm).getLogoutUrls());
+            state.pendingTargets.retainAll(configured);
+            configured.stream().filter(url -> !state.deliveredTargets.contains(url)).forEach(state.pendingTargets::add);
         }
+        IdentityProviderLogoutService logout = new IdentityProviderLogoutService(session, realm, httpClient);
+        state.pendingTargets.removeIf(url -> {
+            if (!logout.notifyEndpoint(url, state.logoutCutoffMillis)) return false;
+            state.deliveredTargets.add(url);
+            return true;
+        });
+        if (healthy) repository.markIdentityProviderAvailable();
     }
 
     private static final class ProbeState {
@@ -107,6 +103,7 @@ public final class IdentityProviderHeartbeatTask implements ScheduledTask {
         private int failures;
         private boolean down;
         private long logoutCutoffMillis;
-        private final Set<String> pendingClients = new LinkedHashSet<>();
+        private final Set<String> deliveredTargets = new LinkedHashSet<>();
+        private final Set<String> pendingTargets = new LinkedHashSet<>();
     }
 }

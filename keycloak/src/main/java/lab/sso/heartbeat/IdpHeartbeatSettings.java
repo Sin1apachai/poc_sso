@@ -1,20 +1,41 @@
 package lab.sso.heartbeat;
 
 import java.net.URI;
+import org.keycloak.models.IdentityProviderModel;
+import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 
-/** Realm-level settings edited under Realm settings > Sessions > Logout. */
-public record IdpHeartbeatSettings(boolean enabled, int intervalSeconds, int failureThreshold, URI healthUrl) {
+/** Timing/target selection belongs to the realm; the health URL belongs to the selected IdP. */
+public record IdpHeartbeatSettings(
+        boolean enabled, int intervalSeconds, int confirmationIntervalSeconds,
+        int failureThreshold, String identityProviderAlias, URI healthUrl) {
     public static final String PREFIX = "temporary.sso.idp-heartbeat.";
+    public static final String HEALTH_URL_CONFIG = "ssoHealthCheckUrl";
 
-    public static IdpHeartbeatSettings fromRealm(RealmModel realm) {
+    public static IdpHeartbeatSettings fromRealm(KeycloakSession session, RealmModel realm) {
         boolean enabled = "true".equals(realm.getAttribute(PREFIX + "enabled"));
-        if (!enabled) return new IdpHeartbeatSettings(false, 60, 3, null);
+        if (!enabled) return new IdpHeartbeatSettings(false, 60, 5, 3, null, null);
         int interval = readPositiveInteger(realm, "interval-seconds", 60, 86400);
+        int confirmationInterval = readPositiveInteger(realm, "confirmation-interval-seconds", 5, 86400);
         int threshold = readPositiveInteger(realm, "failure-threshold", 3, 100);
-        URI healthUrl = requireHttpUrl(realm.getAttribute(PREFIX + "health-url"));
+        String trustedAlias = realm.getAttribute("temporary.sso.idp");
+        String alias = realm.getAttribute(PREFIX + "idp-alias");
+        if (alias == null || alias.isBlank()) alias = trustedAlias;
+        // This lab authenticates through one IdP. A different target must not revoke its tokens.
+        if (trustedAlias == null || !trustedAlias.equals(alias)) {
+            throw new IllegalArgumentException("Heartbeat target must be the SSO identity provider");
+        }
+        IdentityProviderModel provider = session.identityProviders().getByAlias(alias);
+        if (provider == null || !provider.isEnabled()) {
+            throw new IllegalArgumentException("Heartbeat identity provider unavailable");
+        }
+        URI healthUrl = requireHttpUrl(provider.getConfig().get(HEALTH_URL_CONFIG));
         requireHttpUrl(realm.getAttribute("temporary.sso.issuer"));
-        return new IdpHeartbeatSettings(true, interval, threshold, healthUrl);
+        return new IdpHeartbeatSettings(true, interval, confirmationInterval, threshold, alias, healthUrl);
+    }
+
+    public int nextCheckIntervalSeconds(int consecutiveFailures, boolean unavailable) {
+        return consecutiveFailures > 0 && !unavailable ? confirmationIntervalSeconds : intervalSeconds;
     }
 
     public static URI requireHttpUrl(String value) {

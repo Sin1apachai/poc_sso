@@ -35,8 +35,8 @@ function TemporaryTokens() {
       if (!response.ok) {
         throw Error(
           [401, 403].includes(response.status)
-            ? "ต้องมีสิทธิ์ realm-admin เพื่อดูรายการนี้"
-            : "โหลดรายการ token ไม่สำเร็จ กรุณาลองใหม่",
+            ? "The realm-admin role is required to view this list."
+            : "Failed to load tokens. Please try again.",
         );
       }
       const result = await response.json();
@@ -46,14 +46,14 @@ function TemporaryTokens() {
       }
     })()
       .catch((e) => {
-        if (!controller.signal.aborted) setError(e.message || "โหลดข้อมูลไม่สำเร็จ");
+        if (!controller.signal.aborted) setError(e.message || "Failed to load data.");
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
   }, [adminClient, realm, query, generation]);
-  const time = (seconds) => new Date(seconds * 1000).toLocaleString("th-TH", { hour12: false });
+  const time = (seconds) => new Date(seconds * 1000).toLocaleString("en-GB", { hour12: false });
   const rows = (data?.items || []).map((item) =>
     h(
       "tr",
@@ -71,11 +71,11 @@ function TemporaryTokens() {
     "section",
     { className: "sso-token-menu", "data-testid": "temporary-token-page" },
     h("h1", null, "SSO Tokens"),
-    h("p", null, `Realm: ${realm} · รายการ token กลางที่ยัง active ใน cache ชั่วคราว`),
+    h("p", null, `Realm: ${realm} · Active central tokens in the temporary cache`),
     h(
       "p",
       { className: "sso-token-note" },
-      "แสดงเฉพาะข้อมูลกำกับ ไม่แสดง JWT เต็มใบ เมื่อ token หมดอายุหรือถูก revoke รายการจะหายไป ไม่มีประวัติถาวร กดรีเฟรชเพื่อดูสถานะล่าสุด",
+      "Only token metadata is shown; JWT values are not displayed. Expired or revoked tokens are removed from this list. No permanent history is stored. Refresh to see the latest status.",
     ),
     h(
       "form",
@@ -89,15 +89,15 @@ function TemporaryTokens() {
       h(
         "label",
         null,
-        "ระบบ ",
+        "Application ",
         h(
           "select",
           {
             value: query.client,
             onChange: (event) => setQuery({ ...query, first: 0, client: event.target.value }),
-            "aria-label": "กรองตามระบบ",
+            "aria-label": "Filter by application",
           },
-          h("option", { value: "" }, "ทั้งหมด"),
+          h("option", { value: "" }, "All"),
           ...clients.map((client) =>
             h("option", { key: client.clientId, value: client.clientId }, client.name),
           ),
@@ -106,28 +106,28 @@ function TemporaryTokens() {
       h(
         "label",
         null,
-        "ค้นหา ",
+        "Search ",
         h("input", {
           type: "search",
           maxLength: 200,
           value: draft,
-          placeholder: "Email, subject หรือ Token ID",
-          "aria-label": "ค้นหา token",
+          placeholder: "Email, subject or token ID",
+          "aria-label": "Search tokens",
           onChange: (event) => setDraft(event.target.value),
         }),
       ),
-      h("button", { type: "submit", disabled: loading }, "ค้นหา"),
+      h("button", { type: "submit", disabled: loading }, "Search"),
       h(
         "button",
         { type: "button", disabled: loading, onClick: () => setGeneration(generation + 1) },
-        "รีเฟรช",
+        "Refresh",
       ),
     ),
     error ? h("p", { role: "alert", className: "sso-token-error" }, error) : null,
     h(
       "p",
       { role: "status", "data-testid": "temporary-token-count" },
-      loading ? "กำลังโหลด..." : `Active tokens: ${data?.total || 0}`,
+      loading ? "Loading..." : `Active tokens: ${data?.total || 0}`,
     ),
     !loading && data
       ? h(
@@ -135,7 +135,7 @@ function TemporaryTokens() {
           { className: "sso-token-table" },
           h(
             "table",
-            { "aria-label": "รายการ SSO Tokens" },
+            { "aria-label": "SSO tokens" },
             h(
               "thead",
               null,
@@ -144,12 +144,12 @@ function TemporaryTokens() {
                 null,
                 ...[
                   "Token ID (jti)",
-                  "ผู้ใช้ / subject",
-                  "ผู้ออกคำขอ token",
-                  "สิทธิ์",
-                  "ออกเมื่อ",
-                  "หมดอายุ",
-                  "สถานะ",
+                  "User / subject",
+                  "Requesting client",
+                  "Permissions",
+                  "Issued at",
+                  "Expires at",
+                  "Status",
                 ].map((label) => h("th", { key: label, scope: "col" }, label)),
               ),
             ),
@@ -162,7 +162,7 @@ function TemporaryTokens() {
                     h(
                       "tr",
                       { key: "empty" },
-                      h("td", { colSpan: 7 }, "ไม่พบ token ที่ยัง active ตามเงื่อนไขนี้"),
+                      h("td", { colSpan: 7 }, "No active tokens match these filters."),
                     ),
                   ]),
             ),
@@ -180,7 +180,7 @@ function TemporaryTokens() {
               disabled: loading || query.first === 0,
               onClick: () => setQuery({ ...query, first: Math.max(0, query.first - 25) }),
             },
-            "ก่อนหน้า",
+            "Previous",
           ),
           h(
             "span",
@@ -194,7 +194,7 @@ function TemporaryTokens() {
               disabled: loading || query.first + data.items.length >= data.total,
               onClick: () => setQuery({ ...query, first: query.first + 25 }),
             },
-            "ถัดไป",
+            "Next",
           ),
         )
       : null,

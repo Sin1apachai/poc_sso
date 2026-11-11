@@ -12,6 +12,8 @@ Compose กำหนด environment แยกชื่อระบบ ฐาน�
 
 Token ของระบบจาก Login อายุ 1 ชั่วโมง ส่วน SSO app token ไม่เกินอายุ token กลาง การเรียก `/revoke` ต้องใช้ authority C; A/B ใช้ credentials ของตัวเองได้เฉพาะ introspection ใน flow นี้
 
-Token กลางและ app token เก็บใน server-side session ของแอป Browser มีเพียง session cookie และ cookie ผูกคำขอ SSO ไม่ใช้ localStorage
+Token กลางและ app token เก็บใน PostgreSQL ของแอป: ฐานข้อมูลเริ่มต้น A = `app_a`, B = `app_b`, ตาราง `public.session` คอลัมน์ `sess` เป็น JSON โดย `sso.accessToken` เป็น token กลาง, `sso.appToken` เป็น app token หลัง SSO และ `local.appToken` เป็น app token จาก Login ปกติ Browser มีเพียง session cookie และ cookie ผูกคำขอ SSO ไม่ใช้ localStorage ดู [วิธีเชื่อมและ query token](../docs/keycloak/SETUP-GUIDE.md#เชื่อม-postgresql-และหา-token-ที่-ab-เก็บไว้)
+
+A/B ยังใช้ Client ID/Secret กับ custom introspection และตรวจ handoff ผูกกับ Client ของตัวเอง ส่วนการแจ้ง `idp_logout` จาก Keycloak และ `control_logout` จาก C ตรวจ audience กลุ่ม SSO ตาม KC_AUDIENCE ไม่ใช้ Client scopes ปลายทางแจ้งทั้งสองกรณีใช้รายการ Realm settings → Sessions → Logout การเอา URL ออกหยุด notification แต่ยังตรวจ token ที่ถูก revoke ผ่าน heartbeat ตามเดิม
 
 อ่าน [README หลัก](../README.md), [flow](../docs/flows/LOGIN-AND-SESSION.md) และ [API](../docs/flows/API-CATALOG.md)

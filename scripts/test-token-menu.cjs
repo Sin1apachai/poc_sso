@@ -77,9 +77,16 @@ async function sso(context, port) {
       (await fetch(endpoint, { headers: { authorization: "Bearer " + unprivileged } })).status,
       403,
     );
-    pass(
-      "Token metadata API rejects anonymous requests and authenticated users without realm-admin",
+    assert.equal(
+      (
+        await fetch(base + "/admin/realms/sso-lab/idp-heartbeat/app-control/test", {
+          method: "POST",
+          headers: { authorization: "Bearer " + unprivileged },
+        })
+      ).status,
+      403,
     );
+    pass("Token metadata and heartbeat test APIs reject users without realm-admin");
     browser = await chromium.launch({
       executablePath:
         process.env.CHROME_PATH || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -155,22 +162,22 @@ async function sso(context, port) {
     await page.locator('[data-testid="temporary-token-page"]').waitFor();
     await page.locator(`[data-token-id="${tokens[0].jti}"]`).waitFor();
     await page.locator(`[data-token-id="${tokens[1].jti}"]`).waitFor();
-    await page.getByLabel("กรองตามระบบ").selectOption("app-b");
+    await page.getByLabel("Filter by application").selectOption("app-b");
     await page.waitForFunction(
       () =>
         [...document.querySelectorAll("tbody tr[data-token-id]")].every((row) =>
           row.textContent.includes("app-b"),
         ) && document.querySelectorAll("tbody tr[data-token-id]").length > 0,
     );
-    await page.getByLabel("ค้นหา token").fill(tokens[1].jti);
-    await page.getByRole("button", { name: "ค้นหา", exact: true }).click();
+    await page.getByLabel("Search tokens").fill(tokens[1].jti);
+    await page.getByRole("button", { name: "Search", exact: true }).click();
     await page
       .locator('[data-testid="temporary-token-count"]')
       .filter({ hasText: "Active tokens: 1" })
       .waitFor();
-    await page.getByLabel("ค้นหา token").fill("");
-    await page.getByRole("button", { name: "ค้นหา", exact: true }).click();
-    await page.getByLabel("กรองตามระบบ").selectOption("");
+    await page.getByLabel("Search tokens").fill("");
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await page.getByLabel("Filter by application").selectOption("");
     await page.locator(`[data-token-id="${tokens[0].jti}"]`).waitFor();
     await page.screenshot({ path: "docs/keycloak/images/token-menu.png", fullPage: true });
     pass(
@@ -186,7 +193,7 @@ async function sso(context, port) {
     await control.goto("http://localhost:4003/");
     await control.locator('form[action="/logout"] button').click();
     await control.waitForURL("http://localhost:4003/login");
-    await page.getByRole("button", { name: "รีเฟรช", exact: true }).click();
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await page.waitForFunction(
       (ids) => ids.every((id) => !document.querySelector(`[data-token-id="${id}"]`)),
       tokens.map((token) => token.jti),
@@ -203,10 +210,10 @@ async function sso(context, port) {
       Buffer.from(captured.at(-1).access_token.split(".")[1], "base64url"),
     );
     assert.ok((await list()).items.some((row) => row.id === expiring.jti));
-    await page.getByRole("button", { name: "รีเฟรช", exact: true }).click();
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await page.locator(`[data-token-id="${expiring.jti}"]`).waitFor();
     await pause(Math.max(0, expiring.exp * 1000 - Date.now()) + 1500);
-    await page.getByRole("button", { name: "รีเฟรช", exact: true }).click();
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await page.locator(`[data-token-id="${expiring.jti}"]`).waitFor({ state: "detached" });
     assert.equal((await list("?search=" + expiring.jti)).total, 0);
     const cStateAfterExpiry = await (

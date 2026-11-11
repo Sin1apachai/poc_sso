@@ -1,5 +1,5 @@
 {
-  "testedAt": "2026-11-11T03:22:28.848Z",
+  "testedAt": "2026-11-11T10:08:48.314Z",
   "mode": "real Compose A/B/C + PostgreSQL + Keycloak 26.8.1 custom extension",
   "keycloakUsersBefore": 0,
   "keycloakUsersAfter": 0,

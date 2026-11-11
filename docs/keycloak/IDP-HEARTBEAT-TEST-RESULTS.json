@@ -1,12 +1,23 @@
 {
-  "testedAt": "2026-11-11T03:19:20.181Z",
+  "testedAt": "2026-11-11T09:56:53.457Z",
   "mode": "real Keycloak scheduler + browser + C container outage",
   "tests": [
-    "Sessions > Logout saves a custom heartbeat interval and failure threshold, survives reload, and preserves native session settings",
+    "Health Check URL stays in IdP Settings; the native Realm settings Heartbeat tab tests the selected IdP with English results",
+    "Native Heartbeat tab uses Keycloak controls, saves all settings, supports Revert/reload/tab navigation, and preserves native Sessions",
+    "Manual IdP heartbeat tests report HTTP failures without changing outage counts or revoking tokens",
+    "Keycloak sends IdP logout to an additional URL outside A/B/C without registering a Client ID",
+    "Real heartbeat requests use separate normal/confirmation intervals, reset after recovery, and revoke only after three failed checks including the first",
     "Stopping C automatically revokes central tokens and pushes A/B to Login through Keycloak, while independent local A stays logged in",
     "A central access token cannot be reused as a Keycloak global-logout notification",
     "C recovery clears its old central-token status, permits a fresh token, and allows explicit SSO to A/B again",
     "When A misses the push, its existing heartbeat checks the revoked token at Keycloak and removes the SSO session",
-    "A delayed logout retry uses its original cutoff and does not delete a newer SSO login"
-  ]
+    "A delayed logout retry uses its original cutoff and does not delete a newer SSO login",
+    "App C logs both manual and scheduled Keycloak heartbeat requests"
+  ],
+  "cadenceEvidence": {
+    "normalIntervalMs": 4011,
+    "confirmationIntervalsMs": [1001, 1005],
+    "intervalAfterRecoveryMs": 4011,
+    "failuresRequired": 3
+  }
 }

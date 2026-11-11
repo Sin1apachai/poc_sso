@@ -1,0 +1,12 @@
+{
+  "testedAt": "2026-11-11T09:54:14.685Z",
+  "mode": "real Keycloak Sessions form + URL-only logout configuration",
+  "tests": [
+    "Sessions logout settings reject anonymous and unauthorized callers",
+    "Invalid and duplicate URLs cannot partially update session settings or the logout list",
+    "Add URL supports an extra endpoint without any Client ID; shared native Save/Revert handles session values and dynamic rows with persistence",
+    "Remove deletes only the selected URL from the realm logout list",
+    "Other native realm tabs keep their original save API and receive no Logout helper fields",
+    "C logout follows Keycloak URLs: selected A and an extra endpoint receive signed notifications; removed B stays open until its heartbeat detects revocation"
+  ]
+}

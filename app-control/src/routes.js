@@ -30,6 +30,23 @@ async function createRoutes() {
     legacyHeaders: false,
   });
   r.get("/health", async (req, res) => {
+    const source = req.get("X-SSO-Heartbeat");
+    if (source === "manual" || source === "scheduled") {
+      const started = process.hrtime.bigint();
+      res.once("finish", () =>
+        console.log(
+          JSON.stringify({
+            timestamp: new Date().toISOString(),
+            event: "idp_heartbeat",
+            source,
+            method: req.method,
+            path: req.path,
+            status: res.statusCode,
+            durationMs: Math.round(Number(process.hrtime.bigint() - started) / 1e6),
+          }),
+        ),
+      );
+    }
     await pool.query("SELECT 1");
     res.json({ status: "ok" });
   });

@@ -345,7 +345,7 @@ async function controlLogout(req, res) {
     const { keys } = fromKeycloak ? await keycloakClient() : await controlVerifier();
     const { payload } = await jose.jwtVerify(req.body.logout_token, keys, {
       issuer: fromKeycloak ? config.kcIssuer : config.controlPublicUrl + "/oidc",
-      audience: config.kcClientId,
+      audience: config.kcAudience,
       algorithms: ["RS256"],
       requiredClaims: ["sub", "iat", "exp", "jti", "token_use", "revoked_before"],
       maxTokenAge: "2m",
@@ -373,7 +373,8 @@ async function controlLogout(req, res) {
       });
       return res.sendStatus(200);
     }
-    if (payload.token_use !== "control_logout") return res.sendStatus(400);
+    if (payload.token_use !== "control_logout" || payload.idp !== config.kcIdpAlias)
+      return res.sendStatus(400);
     await withUserLock(payload.sub, async () => {
       const { rows } = await pool.query(
         `WITH receipt AS (

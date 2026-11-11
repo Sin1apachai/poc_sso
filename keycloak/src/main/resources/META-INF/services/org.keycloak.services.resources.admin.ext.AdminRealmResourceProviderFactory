@@ -1,1 +1,3 @@
 lab.sso.provider.SsoTokenAdminProviderFactory
+lab.sso.provider.HeartbeatAdminProviderFactory
+lab.sso.provider.SessionLogoutSettingsProviderFactory

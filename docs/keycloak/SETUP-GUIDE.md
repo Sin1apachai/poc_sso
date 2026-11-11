@@ -21,6 +21,14 @@
 
 **ไม่ใช้** protocol mapper, client role mapping, service-account sync หรือ native JWT grant เพื่อออก token ใน flow นี้ สิทธิ์มากับ proof ที่ C เซ็น และ extension ใส่ `app_permissions` ลง token โดยตรง
 
+### Clients และ Client scopes ใช้งานต่างกัน
+
+**Clients ยังจำเป็นต่อ Login SSO** แม้ไม่มี native authorization-code flow: C ใช้ Client ID/Secret ของ authority กับ `POST /temporary-sso-poc/bootstrap` และ `/revoke`; A/B ใช้ credentials ของตัวเองกับ `/introspect` ส่วน Keycloak ตรวจ Client ที่รับ handoff, redirect URI, system-id และสถานะเปิดใช้งาน
+
+**Client scopes ไม่ได้ใช้สร้าง token กลางใน flow นี้** การตั้งค่า A/B/C ให้ default และ optional client scopes ว่าง สิทธิ์มาจาก proof ของ C และส่วนขยายใส่ `app_permissions` ลง JWT โดยตรง ไม่ผ่าน protocol mapper หรือ role mapper การไม่มี Client scopes ไม่ได้หมายความว่าไม่ใช้ Clients และไม่ได้หมายความว่าต้องลบ scopes ของส่วนอื่น เช่น Admin Console
+
+การไม่มี Client ID ใน **Sessions → Logout** หมายถึงการแจ้ง Logout C และ IdP down ใช้รายการ URL ของปลายทาง โดยผู้รับตรวจลายเซ็นและ audience กลุ่ม SSO ตาม protocol ของระบบ ไม่ได้ยกเลิก Clients ของ Login SSO
+
 Session C, token กลาง และ session A/B เป็นคนละส่วน การใช้ SSO เข้าอีกแอปโดยไม่ถามรหัสผ่านอาศัย session C; Keycloak ในวิธีนี้ไม่มี native browser session หรือ refresh token
 
 ## 2. สิ่งที่ต้องติดตั้งก่อนเปิด UI
@@ -39,7 +47,7 @@ npm run lab:configure
 
 ใช้คำสั่งด้านบนเมื่อต้องการตั้งค่าตามสคริปต์ หากต้องการตั้งเอง ให้สร้าง realm ผ่าน UI แล้วทำตามหัวข้อถัดไป สคริปต์สร้าง/ปรับค่าตามตารางด้านล่าง ไม่สร้างผู้ใช้หรือสิทธิ์ถาวร ค่า secrets อ่าน `.env` และไม่พิมพ์ออกจอ หากเปลี่ยน client secret ให้ recreate แอปเจ้าของ secret รวมถึง C เมื่อเปลี่ยน CONTROL_KC_CLIENT_SECRET เช่น `docker compose up -d --no-deps app-a app-b app-control`
 
-**การรันซ้ำจะเขียนค่าทดลองทับตามสคริปต์** ได้แก่ realm enabled/SSL/admin theme, อายุ token, realm attributes ทั้งชุด, heartbeat เปิด/60 วินาที/3 ครั้ง, security headers, trust C และ clients A/B/C ทั้ง secret, capabilities, redirect URIs, scopes และ custom attributes ไม่ใช่คำสั่งบันทึก settings จาก UI ให้แก้ไข/ทดลอง UI หลังรัน configure และอย่ารันซ้ำจนกว่าจะต้องการคืนค่าแล็บ
+**การรันซ้ำจะเขียนค่าทดลองทับตามสคริปต์** ได้แก่ realm enabled/SSL/admin theme, อายุ token, realm attributes ทั้งชุด, heartbeat เปิด/รอบปกติ 60 วินาที/ยืนยันซ้ำ 5 วินาที/เกณฑ์ 3 ครั้ง, security headers, trust C และ clients A/B/C ทั้ง secret, capabilities, redirect URIs, scopes และ custom attributes ไม่ใช่คำสั่งบันทึก settings จาก UI ให้แก้ไข/ทดลอง UI หลังรัน configure และอย่ารันซ้ำจนกว่าจะต้องการคืนค่าแล็บ
 
 เข้าสู่ http://localhost:8080/admin ด้วย admin / admin-local-demo ซึ่งเป็นบัญชีตัวอย่าง localhost ของแล็บ จากนั้นเลือก realm `sso-lab`
 
@@ -132,56 +140,37 @@ Cookies ใน HTTP lab ใช้ **HttpOnly, SameSite=Lax, Secure=false** ไ�
 
 Keycloak ใช้ H2 ของ `start-dev` เก็บ realm/clients/trust/keys ใน `keycloak_data` ส่วน users ของ C และ บัญชีและ sessions ของแอป ของ A/B อยู่ PostgreSQL คนละฐานข้อมูล ค่าเริ่มต้นจาก `postgres/init/` คือ app_a/app_a_user, app_b/app_b_user และ app_control/app_control_user; init ทำงานครั้งแรกของ volume เท่านั้น การเปลี่ยนรหัสผ่านใน .env หลังมี volume ไม่ได้แก้รหัส DB role เดิม และการเปลี่ยน DB_NAME/DB_USER ไม่ได้สร้างฐานข้อมูลหรือ role ใหม่
 
+### เชื่อม PostgreSQL และหา token ที่ A/B เก็บไว้
+
+เชื่อมจาก DB client บนเครื่องด้วย Host `127.0.0.1`, Port `5432`, SSL Mode `Disable` ตาม PostgreSQL ของแล็บนี้ หากใช้ผู้ดูแลให้ใช้ Username `postgres` และ Password จาก `POSTGRES_PASSWORD` ในไฟล์ `.env` ของเครื่อง ไม่ใช้รหัสผ่านตัวอย่างจากเอกสารหรือค่าที่ถูกเปลี่ยนหลังสร้าง volume แล้ว
+
+| ระบบ | Database ตามค่าเริ่มต้น | DB user ของแอป   | Password ใน .env    | ตำแหน่ง token กลาง                        |
+| ---- | ----------------------- | ---------------- | ------------------- | ----------------------------------------- |
+| A    | app_a                   | app_a_user       | APP_A_DB_PASSWORD   | public.session → sess → sso → accessToken |
+| B    | app_b                   | app_b_user       | APP_B_DB_PASSWORD   | public.session → sess → sso → accessToken |
+| C    | app_control             | app_control_user | CONTROL_DB_PASSWORD | public.central_sso_status → access_token  |
+
+A/B เก็บ JWT สองใบใน JSON ของ session เดียวกัน: `sess.sso.accessToken` คือ token กลาง และ `sess.sso.appToken` คือ token ของระบบที่สร้างหลังรับ SSO ส่วน Login ด้วยบัญชีของแอปเองเก็บที่ `sess.local.appToken` และไม่มี token กลาง
+
+เลือก Database `app_a` หรือ `app_b` แล้วรัน:
+
+```sql
+SELECT current_database();
+
+SELECT
+    sid,
+    sess->'sso'->>'accessToken' AS central_token
+FROM public.session
+WHERE sess->'sso'->>'accessToken' IS NOT NULL;
+```
+
+หากเปิด Database `postgres` จะไม่เห็นตาราง session ของแอป ต้องเปลี่ยน connection database ก่อน คอลัมน์ของตารางคือ `sid`, `sess` (JSON), `expire`; ไม่มีคอลัมน์ชื่อ accessToken แยกต่างหาก ถ้า query ไม่พบแถว ให้เข้า A หรือ B ผ่าน SSO ก่อน การ Login เฉพาะ C หรือ Login ด้วยบัญชีของ A/B เองไม่สร้างแถว SSO ของอีกแอป
+
+การมี token อยู่ในแถวไม่ได้ยืนยันว่าใช้งานได้ ต้องตรวจ `exp` และสถานะจาก custom introspection ด้วย ส่วน `session.expire` เป็นเวลาของ session store ไม่ใช่ค่า `exp` ของ JWT
+
 **session Login C หมดอายุไม่เท่ากับกด Logout C** ไม่มีการส่ง global logout เพียงเพราะ local session หมดอายุ token กลางยังเป็นไปตาม exp ของ JWT จนหมดอายุหรือถูก revoke และ IdP heartbeat เช็คความพร้อมของบริการ ไม่ใช่ว่า session ผู้ใช้แต่ละคนยังอยู่หรือไม่ การกด Logout C และแก้สิทธิ์เป็นเหตุการณ์ที่สั่ง revoke ตาม F09/F10
 
-### ตั้ง IdP heartbeat และ Auto global logout
-
-เปิด **Realm settings → Sessions** เลื่อนลงไปที่หัวข้อ **Logout → IdP heartbeat / Global logout** ส่วนนี้เพิ่มโดย theme ของแล็บ ไม่ใช่ field มาตรฐานของ Keycloak และไม่แก้ค่าของ SSO Session Idle/Max ด้านบน
-
-[เปิด Sessions ของ sso-lab](http://localhost:8080/admin/master/console/#/sso-lab/realm-settings/sessions)
-
-![ตำแหน่งตั้งค่า IdP heartbeat ภายใน Sessions ส่วน Logout](images/idp-heartbeat-settings.png)
-
-| ช่องบน UI                                           | ค่าเริ่มต้น                    | ความหมาย                                                     |
-| --------------------------------------------------- | ------------------------------ | ------------------------------------------------------------ |
-| เปิดใช้งาน IdP heartbeat                            | เปิด                           | ให้ Keycloak ตรวจ C ต่อเนื่อง แม้ผู้ใช้ไม่เปิด browser       |
-| รอบตรวจ IdP และหน่วยเวลา                            | 1 นาที                         | กำหนดได้ 1 วินาที–24 ชั่วโมง เลือกวินาที/นาที/ชั่วโมง        |
-| จำนวนครั้งที่ตรวจไม่ผ่านติดต่อกันก่อน Global logout | 3                              | กำหนดได้ 1–100 ครั้ง ถ้าตรวจผ่านจะเริ่มนับใหม่               |
-| IdP Health URL                                      | http://app-control:4003/health | URL ที่ Keycloak container เข้าถึง C ได้ ต้องเป็น HTTP/HTTPS |
-
-กด **บันทึก IdP heartbeat** หน้าจะ reload และค่ามีผลโดยไม่ต้อง restart ค่าเก็บใน realm attributes แยกตาม realm และใช้ native Admin API ซึ่งตรวจสิทธิ์จัดการ realm เดิม การบันทึก merge attributes ปัจจุบันเพื่อรักษา settings อื่นไว้
-
-**อย่าใช้ localhost:4003 เป็น Health URL ภายใน Docker** เพราะ localhost จาก Keycloak หมายถึง container Keycloak เอง ส่วน port 4002 ของ B เป็น port ที่เปิดบนเครื่อง host; ปลายทาง logout ภายใน Docker ใช้ app-b:4001
-
-ตรวจสำเร็จเมื่อ HTTP เป็น 2xx ไม่ตาม redirect แต่ละครั้ง timeout 3 วินาที DNS error, connect ไม่ได้, timeout, TLS error หรือ HTTP นอก 2xx ถือว่าไม่ผ่าน เมื่อเปิดหรือเปลี่ยน config จะเริ่มตรวจใน tick ถัดไป (ประมาณ 1 วินาที) จากนั้นตรวจตามช่วงที่กำหนด ดังนั้น 1 นาที/3 ครั้งไม่ได้หมายถึงออกทันทีที่ C หยุด ต้องรอตรวจไม่ผ่านครบเกณฑ์ และมีเวลารอ HTTP ด้วย
-
-เมื่อพบว่า IdP down:
-
-1. Keycloak ทำเครื่องหมาย down และ revoke token กลางของ realm ที่มาจาก IdP เดียวนี้ ไม่เพิ่ม token ใหม่
-2. Keycloak ส่ง signed `idp_logout` ไป A/B โดยตรง ไม่พึ่ง C ที่ปิดอยู่
-3. A/B ตรวจ issuer/JWKS/audience/purpose/idp/expiry และกัน replay จากนั้นล้างเฉพาะ SSO session และแจ้ง browser ผ่าน SSE ให้กลับ Login; Login ด้วยบัญชีของระบบ A/B คงอยู่
-4. ถ้าแจ้งแอปไม่สำเร็จ Keycloak จะลองใหม่ในรอบตรวจถัดไป Heartbeat A/B เป็นการตรวจสำรองเมื่อพลาดการแจ้ง โดยถาม token กลางกับ Keycloak ตามเงื่อนไขเดิม
-5. คำขอ SSO เก่าที่ค้างก่อน global logout ถูกกั้นด้วย cutoff และระหว่าง down จะไม่รับการออก/ส่งต่อ token แม้มี proof ค้างอยู่
-
-เมื่อ C กลับมาและตรวจผ่าน Keycloak ยกเลิกสถานะ down แต่ token เก่าไม่กลับมา active ต้องเริ่ม SSO ใหม่ การแจ้งที่ส่งให้ C ค้างไว้จะถูกลองใหม่เพื่อล้างสถานะ token กลางเก่าของ C โดยยังคง session Login ของ C การแจ้งย้อนหลังใช้ cutoff เดิมเพื่อไม่ล้าง session ใหม่ที่สร้างภายหลัง
-
-ปลายทาง logout ลงทะเบียนใน client attribute `temporary.sso.logout-url`:
-
-| Client ตัวอย่าง | ปลายทางจาก Keycloak                     |
-| --------------- | --------------------------------------- |
-| app-a           | http://app-a:4001/logout/control        |
-| app-b           | http://app-b:4001/logout/control        |
-| app-control     | http://app-control:4003/logout/keycloak |
-
-Keycloak เป็นผู้ลงลายเซ็น notification และใช้ audience ของ client ผู้รับ ไม่ส่ง Client Secret หรือรหัสผ่านใน notification เป็น protocol custom ของ PoC ไม่ใช่ native OIDC back-channel logout token
-
-Realm attributes ของฟอร์มคือ `temporary.sso.idp-heartbeat.enabled`, `temporary.sso.idp-heartbeat.interval-seconds`, `temporary.sso.idp-heartbeat.failure-threshold`, `temporary.sso.idp-heartbeat.health-url` ส่วน `temporary.sso.issuer` เป็น public issuer สำหรับลงลายเซ็นจาก background task ซึ่งไม่มี browser request context ต้องตรงกับ KC_ISSUER ของแอป
-
-`lab:configure` ตั้ง heartbeat กลับเป็นเปิด/60 วินาที/3 ครั้งและ URL ตัวอย่างตามสคริปต์ หากตั้งเองผ่าน UI แล้วรันสคริปต์นี้ซ้ำ ต้องตรวจค่าอีกครั้ง การปิด heartbeat หยุดการตรวจและไม่คืน token ที่ revoke ไปแล้ว
-
-นี่เป็น scheduler ของ Keycloak extension สำหรับ PoC node เดียว ไม่เพิ่ม Docker service และไม่ตรวจว่าผู้ใช้แต่ละคนยังมี session ที่ IdP หรือไม่ อ่าน [F11](../flows/LOGIN-AND-SESSION.md#f11--ตรวจความพร้อม-c-และออกจาก-sso-เมื่อ-c-ขัดข้อง) และรันทดสอบด้วย `npm run test:idp-heartbeat` ซึ่งหยุด/เปิด C จริง ใช้เวลาเร่งเฉพาะการทดสอบ แล้วคืนค่าเดิม
-
-## 4. Trust C — แหล่งตัวตนเดียว
+## 4. ตั้งค่า IdP C — ตัวตนและ Health Check
 
 ไป **Identity providers** → ถ้ายังไม่มีให้เลือก **Add provider → JWT Authorization Grant** ตั้ง Alias เป็น `app-control` แล้วกรอกค่าตามตารางและ Save ถ้ามีแล้วให้เปิด provider `app-control` เพื่อตรวจค่า
 
@@ -200,6 +189,121 @@ Provider type นี้ใช้เป็นที่เก็บ config trust �
 `localhost:4003` คือ issuer ที่ใช้ระบุ C ส่วน `app-control:4003` เป็น DNS ของ container ที่ Keycloak ใช้เรียก JWKS ภายใน Docker ไม่ควรเปลี่ยน issuer เป็น internal URL เพราะจะตรวจลายเซ็น/issuer ไม่ตรงกัน
 
 ![ตัวอย่างตำแหน่ง IdP settings](images/new-trust-c.png)
+
+### Health Check URL ของ IdP
+
+1. เปิด **Identity providers → app-control → Settings**
+2. เลื่อนหาช่อง **Health Check URL** แล้วกรอก `http://app-control:4003/health`
+3. กด **Save** ของฟอร์ม IdP แล้ว reload เพื่อตรวจว่าค่าถูกบันทึก
+4. ไป **Realm settings → Heartbeat** เลือก **Target IdP** แล้วกด **Test heartbeat** เพื่อให้ Keycloak ทดลองเรียกปลายทางหนึ่งครั้ง
+
+![Health Check URL ใน IdP Settings](images/idp-health-url-settings.png)
+
+ข้อความใน Admin Console รวมถึงช่องนี้ คำอธิบาย ปุ่ม และผลทดสอบใช้ภาษาอังกฤษ ช่องนี้เพิ่มโดย theme ของระบบและใช้ปุ่ม Save เดิมของ Keycloak ค่าเก็บใน `IdentityProviderRepresentation.config.ssoHealthCheckUrl` โดยรักษา issuer/JWKS และค่า IdP อื่นไว้ หากเพิ่ม IdP ใหม่ จะเห็นช่องนี้ในฟอร์ม JWT Authorization Grant ด้วย
+
+ตัวอย่างส่วน config ที่เกี่ยวข้อง:
+
+```json
+{
+  "issuer": "http://localhost:4003/oidc",
+  "jwksUrl": "http://app-control:4003/oidc/jwks",
+  "useJwksUrl": "true",
+  "ssoHealthCheckUrl": "http://app-control:4003/health"
+}
+```
+
+Health Check URL เป็นปลายทางสำหรับตรวจบริการ ส่วน issuer ระบุผู้ออกหลักฐาน และ JWKS URL ใช้โหลดกุญแจ ทั้งสามค่ามีหน้าที่แยกกัน
+
+### ตั้ง IdP heartbeat และ Auto global logout
+
+ตั้ง Health Check URL ที่ IdP ตามหัวข้อก่อนหน้า แล้วเปิด **Realm settings → Heartbeat** แท็บอยู่ในแถบเดียวกับ Sessions และ Tokens หากจอแคบให้เลื่อนแถบแท็บไปทางขวา หัวข้อภายในคือ **IdP heartbeat / Global logout**
+
+Heartbeat เป็นความสามารถที่ส่วนขยายเพิ่มให้ระบบนี้ โดยลงทะเบียนแท็บผ่าน UiTabProvider และใช้คอมโพเนนต์ฟอร์มของ Keycloak เดิม ทั้งสวิตช์ จำนวนครั้ง ตัวเลือกหน่วยเวลา รายการ IdP ปุ่ม Save/Revert และข้อความแจ้งผล จึงใช้ layout และ styles เดียวกับ Admin Console ส่วนค่าของ SSO Session Idle/Max ยังตั้งในแท็บ Sessions ตามเดิม
+
+[เปิด Heartbeat ของ sso-lab](http://localhost:8080/admin/master/console/#/sso-lab/realm-settings/heartbeat)
+
+![แท็บ Heartbeat และฟอร์มมาตรฐานของ Keycloak](images/idp-heartbeat-settings.png)
+
+| ช่องบน UI            | ค่าเริ่มต้น | ความหมาย                                                                  |
+| -------------------- | ----------- | ------------------------------------------------------------------------- |
+| Enable heartbeat     | เปิด        | ให้ Keycloak ตรวจ C เบื้องหลัง                                            |
+| 1. Failure threshold | 3 ครั้ง     | นับรวมการตรวจที่ไม่ผ่านครั้งแรก หากตรวจผ่านก่อนครบเกณฑ์จะเริ่มนับใหม่     |
+| 2. Retry interval    | 5 วินาที    | ใช้หลังพบปัญหา ขณะรอยืนยันว่าล่มครบจำนวนครั้ง                             |
+| 3. Check interval    | 1 นาที      | ใช้เมื่อ C พร้อมใช้งาน และตรวจการฟื้นตัวหลังยืนยันว่าล่มแล้ว              |
+| 4. Target IdP        | app-control | เลือก IdP จากรายการที่ลงทะเบียนไว้ ระบบอ่าน Health Check URL ของ IdP นั้น |
+
+ช่วงเวลาทั้งสองเลือกหน่วยวินาที/นาที/ชั่วโมงได้ ตั้งได้ 1 วินาที–24 ชั่วโมง ส่วนจำนวนครั้งตั้งได้ 1–100 ครั้ง หากตั้งจำนวนครั้งเป็น 1 จะยืนยันว่าล่มตั้งแต่การตรวจไม่ผ่านครั้งแรก
+
+ตัวอย่างรอบปกติ 1 นาที ยืนยันซ้ำทุก 5 วินาที และเกณฑ์ 3 ครั้ง:
+
+1. ตรวจตามรอบปกติแล้วไม่ผ่าน นับเป็นครั้งที่ 1
+2. รอ 5 วินาที แล้วตรวจซ้ำ หากยังไม่ผ่านนับเป็นครั้งที่ 2
+3. รออีก 5 วินาที หากยังไม่ผ่านครบครั้งที่ 3 จึงยกเลิก SSO
+4. หากตรวจผ่านก่อนครบ 3 ครั้ง ให้ล้างตัวนับและกลับไปรอบปกติ 1 นาที
+5. หลังยืนยันว่าล่มแล้ว ตรวจการฟื้นตัวและลองแจ้งปลายทางที่ค้างตามรอบปกติ 1 นาที
+
+รายการเลือกอ่านจาก Identity providers ของ realm ในระบบนี้เลือก IdP ที่เป็นแหล่งยืนยันตัวตน SSO ตาม `temporary.sso.idp` และเปิดใช้งานอยู่ เพื่อไม่ให้ความขัดข้องของ IdP อื่นไปยกเลิก token ของ C แท็บ Heartbeat มีการเปิดใช้งาน จำนวนครั้ง ระยะเวลา IdP ที่เลือก ปุ่ม **Test heartbeat** และลิงก์ **Configure IdP heartbeat** ส่วนช่อง **Health Check URL** อยู่ใน IdP Settings เท่านั้น
+
+กด **Save** เพื่อบันทึก ค่ามีผลโดยไม่ต้อง reload หรือ restart เมื่อบันทึกสำเร็จจะมีข้อความแจ้งผลและปุ่ม Save ปิดจนกว่าจะมีการแก้ไขอีกครั้ง กด **Revert** เพื่อยกเลิกการแก้ไขที่ยังไม่ได้บันทึกและคืนค่าล่าสุดที่โหลดหรือบันทึกในหน้านี้ ค่าเก็บใน realm attributes แยกตาม realm และใช้ native Admin API ซึ่งตรวจสิทธิ์จัดการ realm เดิม การบันทึก merge attributes ปัจจุบันเพื่อรักษา settings อื่นไว้
+
+ปุ่ม **Test heartbeat** อยู่ใน **Realm settings → Heartbeat** และทดสอบ IdP ที่เลือกในช่อง **Target IdP** โดยอ่าน Health Check URL ล่าสุดที่บันทึกไว้ใน IdP Settings ต้อง Save URL ที่ IdP Settings ก่อนทดสอบ การตรวจทำจาก Keycloak โดยใช้ GET, timeout 3 วินาที, ไม่ตาม redirect และถือว่าสำเร็จเมื่อ HTTP เป็น 2xx เหมือน scheduler ผลแสดงเป็นภาษาอังกฤษ เช่น **Heartbeat succeeded (HTTP 200, 12 ms).** หรือ **Heartbeat failed (HTTP 503, 15 ms).** หากเชื่อมต่อไม่ได้จะระบุ **no HTTP response**
+
+การกดทดสอบเป็นการตรวจครั้งเดียว ใช้ได้แม้ปิด heartbeat อัตโนมัติ และไม่เพิ่มตัวนับความล้มเหลว ไม่ยกเลิก token หรือ logout ผู้ใช้ ต้องมีสิทธิ์ realm-admin สำหรับ Admin API ทดสอบ
+
+ดูคำขอที่เข้ามาจริงจาก App C ด้วย `docker compose logs --follow --since 2m app-control` ในโฟลเดอร์โครงการ จะมี JSON log `event: idp_heartbeat`, `source: scheduled` สำหรับรอบอัตโนมัติ หรือ `source: manual` เมื่อกดปุ่ม พร้อม `timestamp`, `method`, `path`, `status`, `durationMs` ใช้เวลา UTC ตาม ISO 8601 และไม่บันทึก JWT/password คำขอ Docker healthcheck ปกติไม่สร้าง log กลุ่มนี้
+
+Keycloak ส่ง header `X-SSO-Heartbeat: scheduled` หรือ `manual` เพื่อระบุแหล่งคำขอใน log เท่านั้น header นี้ไม่ใช่หลักฐานยืนยันตัวตน หาก C หยุดทำงานจะไม่มี request log ใหม่ ให้ดูผลล้มเหลวจากปุ่มทดสอบหรือ log ของ Keycloak แทน
+
+**Health Check URL ของ IdP ต้องเป็น URL ที่ Keycloak เรียกได้ อย่าใช้ localhost:4003 ภายใน Docker** เพราะ localhost จาก Keycloak หมายถึง container Keycloak เอง ส่วน port 4002 ของ B เป็น port ที่เปิดบนเครื่อง host; ปลายทาง logout ภายใน Docker ใช้ app-b:4001
+
+ตรวจสำเร็จเมื่อ HTTP เป็น 2xx ไม่ตาม redirect แต่ละครั้ง timeout 3 วินาที DNS error, connect ไม่ได้, timeout, TLS error หรือ HTTP นอก 2xx ถือว่าไม่ผ่าน เมื่อเปิดหรือเปลี่ยน config จะเริ่มตรวจใน tick ถัดไป (ประมาณ 1 วินาที) จากนั้นตรวจตามช่วงที่กำหนด เวลายืนยันล่มนับจากการตรวจไม่ผ่านครั้งแรก แล้วใช้ระยะห่างการยิงยืนยันซ้ำ ไม่ได้รอรอบปกติทุกครั้ง ระยะจริงยังขึ้นกับ scheduler และเวลารอ HTTP จึงไม่ได้ Logout ทันทีที่ C หยุด
+
+เมื่อพบว่า IdP down:
+
+1. Keycloak ทำเครื่องหมาย down และ revoke token กลางของ realm ที่มาจาก IdP เดียวนี้ ไม่เพิ่ม token ใหม่
+2. Keycloak ส่ง signed `idp_logout` ไปแต่ละ Logout URL ที่บันทึกไว้ เช่น A/B โดยตรง ไม่พึ่ง C ที่ปิดอยู่
+3. A/B ตรวจ issuer/JWKS/audience/purpose/idp/expiry และกัน replay จากนั้นล้างเฉพาะ SSO session และแจ้ง browser ผ่าน SSE ให้กลับ Login; Login ด้วยบัญชีของระบบ A/B คงอยู่
+4. ถ้าแจ้งแอปไม่สำเร็จ Keycloak จะลองใหม่ในรอบตรวจถัดไป Heartbeat A/B เป็นการตรวจสำรองเมื่อพลาดการแจ้ง โดยถาม token กลางกับ Keycloak ตามเงื่อนไขเดิม
+5. คำขอ SSO เก่าที่ค้างก่อน global logout ถูกกั้นด้วย cutoff และระหว่าง down จะไม่รับการออก/ส่งต่อ token แม้มี proof ค้างอยู่
+
+เมื่อ C กลับมาและตรวจผ่าน Keycloak ยกเลิกสถานะ down แต่ token เก่าไม่กลับมา active ต้องเริ่ม SSO ใหม่ การแจ้งที่ส่งให้ C ค้างไว้จะถูกลองใหม่เพื่อล้างสถานะ token กลางเก่าของ C โดยยังคง session Login ของ C การแจ้งย้อนหลังใช้ cutoff เดิมเพื่อไม่ล้าง session ใหม่ที่สร้างภายหลัง
+
+ตัวอย่าง URLs เริ่มต้น แก้ได้ที่ Realm settings → Sessions → Logout:
+
+| ระบบตัวอย่าง | ปลายทางจาก Keycloak                     |
+| ------------ | --------------------------------------- |
+| app-a        | http://app-a:4001/logout/control        |
+| app-b        | http://app-b:4001/logout/control        |
+| app-control  | http://app-control:4003/logout/keycloak |
+
+Keycloak เป็นผู้ลงลายเซ็น notification และใช้ audience ของกลุ่ม SSO ไม่ส่ง Client Secret หรือรหัสผ่านใน notification เป็น protocol custom ของ PoC ไม่ใช่ native OIDC back-channel logout token
+
+### ตั้ง Logout URLs ใน Sessions
+
+เปิด **Realm settings → Sessions** แล้วเลื่อนไปที่ **Logout** รายการเพิ่มและลบได้เอง โดยไม่มีช่อง Client ID และไม่มีจำนวนระบบตายตัว
+
+1. กด **Add logout target** เพื่อเพิ่มแถว URL เปล่า
+2. กรอก **Logout URL** ที่ Keycloak เรียกถึง
+3. เพิ่มได้หลายแถว หรือกด **Remove** เพื่อลบแถวที่ไม่ใช้
+4. กด **Save** ชุดเดิมท้ายหน้า Sessions เพื่อบันทึกทั้งค่า session และรายการ URL หรือ **Revert** เพื่อคืนการแก้ไขทั้งสองส่วนที่ยังไม่บันทึก
+
+![Logout URLs แบบเพิ่มและลบแถวได้ ในหน้า Sessions](images/session-logout-settings.png)
+
+URL ต้องเป็น HTTP/HTTPS ที่ไม่มี username/password หรือ fragment และต้องไม่ซ้ำกัน การลบ URL แล้วกด Save หยุดส่ง notification ไป endpoint นั้น ทั้งตอน Logout C และเมื่อ IdP down แต่ไม่ได้ยกเว้นการ revoke token กลาง แอปที่ไม่ได้รับแจ้งยังตรวจพบ token ใช้งานไม่ได้จาก heartbeat หรือการตรวจตามเงื่อนไขของแอป
+
+รายการเก็บเป็น JSON array ใน realm attribute `temporary.sso.logout-urls` ไม่ใช้ Client ID และไม่สร้าง Client ใหม่เพื่อเพิ่มปลายทาง logout เมื่อยืนยัน IdP down Keycloak ส่ง signed notification ไปยัง URLs ในรายการ คำขอที่แจ้งไม่สำเร็จจะถูกลองใหม่ด้วย cutoff เดิม สำหรับ Logout C หรือแก้สิทธิ์ C อ่านรายการเดียวกันจากผลตอบกลับ `/logout-user` แล้วส่งแจ้งเอง
+
+Notification ใช้ `aud` ของกลุ่ม SSO จาก `temporary.sso.audience` พร้อม `token_use: idp_logout`, IdP และเวลาตัด session ผู้รับต้องตรวจลายเซ็น Keycloak, issuer, audience กลุ่ม, อายุ, purpose และ IdP ก่อนล้าง session การแจ้ง Logout รายผู้ใช้จาก C ใช้ลายเซ็น C, `token_use: control_logout`, audience กลุ่มเดียวกัน และ subject ของผู้ใช้ ผู้รับตรวจผู้ส่งและ purpose ให้ตรงก่อนดำเนินการ
+
+ฟอร์มใช้คอมโพเนนต์และปุ่ม Save/Revert เดิมของ Keycloak ส่วนขยายบันทึก session fields กับรายการ URL ผ่าน Admin API เดียวใน transaction เดียว ตรวจข้อมูลทั้งหมดก่อนเขียน ถ้า URL ไม่ถูกต้องจะไม่บันทึกบางส่วน ส่วนแท็บอื่นยังใช้ native save ตามเดิม ต้องมี realm-admin สำหรับส่วนนี้
+
+ทดสอบด้วย `npm run test:session-logout` ผลอยู่ใน [SESSION-LOGOUT-TEST-RESULTS.json](SESSION-LOGOUT-TEST-RESULTS.json) ทดสอบ Add/Remove/Save/Revert และเพิ่ม URL ที่ไม่มี Client ID รวมทั้ง Logout C หลังเอา B ออกจากรายการ: A ถูกแจ้งทันที ส่วน B ตรวจพบ token ถูก revoke จาก heartbeat ก่อนคืนค่าทั้งหมดเมื่อจบ
+
+Realm attributes ของฟอร์มคือ `temporary.sso.idp-heartbeat.enabled`, `temporary.sso.idp-heartbeat.failure-threshold`, `temporary.sso.idp-heartbeat.confirmation-interval-seconds`, `temporary.sso.idp-heartbeat.interval-seconds` และ `temporary.sso.idp-heartbeat.idp-alias` URL อยู่ใน IdP config ชื่อ `ssoHealthCheckUrl` ไม่เก็บซ้ำใน realm ส่วน `temporary.sso.issuer` เป็น public issuer สำหรับลงลายเซ็นจาก background task ซึ่งไม่มี browser request context ต้องตรงกับ KC_ISSUER ของแอป
+
+`lab:configure` ตั้ง heartbeat กลับเป็นเปิด/รอบปกติ 60 วินาที/ยืนยันซ้ำ 5 วินาที/เกณฑ์ 3 ครั้งและ IdP ตัวอย่างตามสคริปต์ หากตั้งเองผ่าน UI แล้วรันสคริปต์นี้ซ้ำ ต้องตรวจค่าอีกครั้ง การปิด heartbeat หยุดการตรวจและไม่คืน token ที่ revoke ไปแล้ว
+
+นี่เป็น scheduler ของ Keycloak extension สำหรับ PoC node เดียว ไม่เพิ่ม Docker service และไม่ตรวจว่าผู้ใช้แต่ละคนยังมี session ที่ IdP หรือไม่ อ่าน [F11](../flows/LOGIN-AND-SESSION.md#f11--ตรวจความพร้อม-c-และออกจาก-sso-เมื่อ-c-ขัดข้อง) และรันทดสอบด้วย `npm run test:idp-heartbeat` ซึ่งหยุด/เปิด C จริง ใช้เวลาเร่งเฉพาะการทดสอบ แล้วคืนค่าเดิม
 
 ## 5. Client A/B
 
@@ -257,12 +361,11 @@ Token กลางมี `aud=sso-apps` และ app_permissions รวมต�
 | KC_IDP_ALIAS        | temporary.sso.idp              | แหล่งยืนยันตัวตนที่ Keycloak เชื่อถือ                |
 | KC_ISSUER           | temporary.sso.issuer           | ผู้ออก token กลาง รวมถึงการลงลายเซ็นจากงานเบื้องหลัง |
 
-| Attribute ของ client     | A                                | B                                | C                                       | ทำไมต้องมี                                    |
-| ------------------------ | -------------------------------- | -------------------------------- | --------------------------------------- | --------------------------------------------- |
-| temporary.sso.enabled    | true                             | true                             | true                                    | ให้ extension ยอมรับ client นี้               |
-| temporary.sso.role       | application                      | application                      | authority                               | แยกแอปผู้รับจากผู้ขอออก/ยกเลิก token          |
-| temporary.sso.system-id  | app-a                            | app-b                            | ไม่ต้องตั้ง                             | ใช้หา read ใน app_permissions                 |
-| temporary.sso.logout-url | http://app-a:4001/logout/control | http://app-b:4001/logout/control | http://app-control:4003/logout/keycloak | ปลายทาง notification จาก background heartbeat |
+| Attribute ของ client    | A           | B           | C           | ทำไมต้องมี                           |
+| ----------------------- | ----------- | ----------- | ----------- | ------------------------------------ |
+| temporary.sso.enabled   | true        | true        | true        | ให้ extension ยอมรับ client นี้      |
+| temporary.sso.role      | application | application | authority   | แยกแอปผู้รับจากผู้ขอออก/ยกเลิก token |
+| temporary.sso.system-id | app-a       | app-b       | ไม่ต้องตั้ง | ใช้หา read ใน app_permissions        |
 
 `system-id` ต้องตรง SYSTEM_ID ของแอปและ key ที่ C ใช้ใน app_permissions ไม่ใช่ชื่อแสดงผล และ client ID ใน Admin API path ใช้ **UUID ภายใน** ที่อ่านจาก GET client ไม่ใช่ข้อความ app-a
 
@@ -279,12 +382,13 @@ Token กลางมี `aud=sso-apps` และ app_permissions รวมต�
   "temporary.sso.issuer": "http://localhost:8080/realms/sso-lab",
   "temporary.sso.idp-heartbeat.enabled": "true",
   "temporary.sso.idp-heartbeat.interval-seconds": "60",
+  "temporary.sso.idp-heartbeat.confirmation-interval-seconds": "5",
   "temporary.sso.idp-heartbeat.failure-threshold": "3",
-  "temporary.sso.idp-heartbeat.health-url": "http://app-control:4003/health"
+  "temporary.sso.idp-heartbeat.idp-alias": "app-control"
 }
 ```
 
-JSON ด้านบนเป็น **ค่าภายใน field `attributes`** ไม่ใช่ request body ทั้งก้อน ให้รวมกับ attributes เดิมก่อน PUT เพราะการส่ง attributes บาง key อาจแทนที่ map เดิม เช่น `{ "attributes": { ...ค่าปัจจุบัน, ...ค่าที่เพิ่ม } }` โดยเครื่องหมาย ... เป็นคำอธิบายการ merge ไม่ใช่ JSON ที่ส่งได้จริง ส่วน heartbeat 4 ค่ามี UI ใน Sessions → Logout แล้ว เมื่อ realm ถูกเตรียมค่าที่เหลือครบ
+JSON ด้านบนเป็น **ค่าภายใน field `attributes`** ไม่ใช่ request body ทั้งก้อน ให้รวมกับ attributes เดิมก่อน PUT เพราะการส่ง attributes บาง key อาจแทนที่ map เดิม เช่น `{ "attributes": { ...ค่าปัจจุบัน, ...ค่าที่เพิ่ม } }` โดยเครื่องหมาย ... เป็นคำอธิบายการ merge ไม่ใช่ JSON ที่ส่งได้จริง ส่วน heartbeat 4 ค่าหลักและตัวเปิดใช้งานมี UI ใน Realm settings → Heartbeat แล้ว เมื่อ realm ถูกเตรียมค่าที่เหลือครบ
 
 3. `GET http://localhost:8080/admin/realms/sso-lab/clients?clientId=app-a` อ่าน `id` แล้ว GET `.../clients/{id}` และ PUT URL หลังนี้ด้วย representation ที่รักษาค่าเดิม โดยรวม field `attributes` ของ A ดังนี้:
 
@@ -292,18 +396,16 @@ JSON ด้านบนเป็น **ค่าภายใน field `attributes
 {
   "temporary.sso.enabled": "true",
   "temporary.sso.role": "application",
-  "temporary.sso.system-id": "app-a",
-  "temporary.sso.logout-url": "http://app-a:4001/logout/control"
+  "temporary.sso.system-id": "app-a"
 }
 ```
 
-4. ทำซ้ำกับ B โดยเปลี่ยน system-id เป็น app-b และ logout URL เป็น http://app-b:4001/logout/control ส่วน C ใช้ attributes:
+4. ทำซ้ำกับ B โดยเปลี่ยน system-id เป็น app-b ส่วน C ใช้ attributes:
 
 ```json
 {
   "temporary.sso.enabled": "true",
-  "temporary.sso.role": "authority",
-  "temporary.sso.logout-url": "http://app-control:4003/logout/keycloak"
+  "temporary.sso.role": "authority"
 }
 ```
 
@@ -341,7 +443,7 @@ Referrer-Policy: origin
 - read คือสิทธิ์เข้าใช้แอป ต้องมีบัญชีในฐานข้อมูลแอปนั้นด้วย
 - write/delete เป็น claims ที่หน้าแอปแสดงเพื่อทดสอบ ยังไม่มีธุรกิจ CRUD ให้ใช้งานแต่ละสิทธิ์
 - สร้างใหม่บันทึกใน C เท่านั้น ไม่สร้าง user ใน Keycloak
-- แก้ user เดิมจะยกเลิก token เก่าและแจ้ง A/B ให้เริ่ม SSO ใหม่
+- แก้ user เดิมจะยกเลิก token เก่าและแจ้งตาม Logout URLs ให้เริ่ม SSO ใหม่
 - ถ้าเพิกถอน/แจ้งแอปไม่สำเร็จจะตอบ error แม้บันทึกข้อมูล C ไปแล้ว ต้อง retry
 
 ใน Keycloak **Users ต้องยังไม่มี user ของ C** และ **Clients → app-a หรือ app-b → Roles** ไม่มี read/write/delete ที่โปรแกรมสร้าง บัญชี admin ของ master realm เป็นข้อมูลบริหารแยกจาก users ของ sso-lab
@@ -354,7 +456,7 @@ Referrer-Policy: origin
 
 ![เมนู SSO Tokens และรายการ token กลางร่วม](images/token-menu.png)
 
-หน้านี้แสดง Token ID (jti), email/subject, ผู้ขอออก token, สิทธิ์ app:action, เวลาออก, เวลาหมดอายุ และสถานะ Active มีตัวกรองระบบที่อ่านจาก Keycloak clients ปัจจุบัน ช่องค้นหาและปุ่มรีเฟรช ใช้ข้อมูลเมื่อโหลดล่าสุด ไม่ polling อัตโนมัติ หากตารางกว้างกว่าจอสามารถเลื่อนแนวนอนได้
+หน้านี้ใช้ข้อความภาษาอังกฤษ แสดง Token ID (jti), User / subject, Requesting client, Permissions, Issued at, Expires at และ Status มีตัวกรอง Application ที่อ่านจาก Keycloak clients ปัจจุบัน ช่อง Search tokens และปุ่ม Refresh ใช้ข้อมูลเมื่อโหลดล่าสุด ไม่ polling อัตโนมัติ หากตารางกว้างกว่าจอสามารถเลื่อนแนวนอนได้
 
 **คอลัมน์ผู้ขอออก token ปกติเป็น app-control** ไม่ใช่ชื่อแอปที่ผู้ใช้เปิดล่าสุด ตัวกรอง A/B เลือกจากสิทธิ์ read ใน token ไม่ใช่ประวัติเข้าใช้งาน A/B หนึ่ง token ต่อ C session; เปิด A/B ไม่เพิ่มแถว แต่ Login C อีก browser/session อาจมีอีก token ได้
 
@@ -371,9 +473,9 @@ Referrer-Policy: origin
 
 Compose เปิด feature และ image ติดตั้ง theme ไว้แล้ว `npm run lab:configure` ตั้ง adminTheme ให้ทั้งสอง realm API รายการ token เป็น read-only ไม่เพิ่มปุ่ม revoke หรือเปลี่ยน session ของแอป การยกเลิก token ใช้กระบวนการ Logout
 
-Theme แสดงเมนู SSO Tokens และฟอร์ม IdP heartbeat ในแท็บ Sessions ส่วน Logout โดยใช้ context/auth ของ Admin Console เดิม ฟอร์มและแท็บ native ยังส่งต่อให้ component เดิม ไม่มีการดัก Authorization header หรือสร้าง OAuth client เพิ่ม
+Theme แสดงเมนู SSO Tokens และฟอร์มในแท็บ Heartbeat โดยใช้ context/auth ของ Admin Console เดิม แท็บ Heartbeat ลงทะเบียนผ่าน UiTabProvider ส่วนฟอร์มใช้ FormAccess และ controls เดียวกับหน้ามาตรฐาน `PageHandler` ส่งหน้าอื่นให้ component เดิม ไม่แทรกฟอร์มด้วย DOM portal หรือ CSS แยก และไม่มีการดัก Authorization header หรือสร้าง OAuth client เพิ่ม
 
-ส่วน UI ผูกกับ assets ของ Keycloak **26.8.1** ใน Dockerfile หากเปลี่ยนเวอร์ชันต้องตรวจ module และทดสอบ theme ใหม่ ไม่ใช่ปลั๊กอิน UI ที่รับประกันใช้ได้ทุกเวอร์ชัน
+ส่วนขยาย UI อ้างอิงโมดูลของ Keycloak **26.8.1** ที่ pin ไว้ การอัปเกรดต้องตรวจชื่อโมดูล/exports และทดสอบแท็บ การบันทึก และฟอร์ม IdP Settings อีกครั้ง
 
 ทดสอบเมนูด้วย `npm run test:token-menu` ใช้ browser กับ A/B/C จริง ตรวจสิทธิ์, ค้นหา/กรอง, ไม่มี JWT เต็มใบ, Logout และ expiry โดยคืนอายุ token เมื่อจบ ผลอยู่ใน [TOKEN-MENU-TEST-RESULTS.json](TOKEN-MENU-TEST-RESULTS.json)
 
@@ -396,11 +498,13 @@ Token เก็บฝั่ง server หน้าเว็บได้รับ
 
 ## 8. ตรวจสอบการใช้งาน
 
+ก่อนทดสอบการแจ้ง Logout ทันที ให้ตรวจว่า **Sessions → Logout** มี URL ของแอปที่ต้องการและกด Save แล้ว หากลบ URL ของ B ออก B จะตรวจพบการ revoke ผ่าน heartbeat แทนการรับแจ้งทันที
+
 1. เปิด C `/login` แล้วดูสถานะ token สำเร็จและแถว app-control ในเมนู SSO Tokens ก่อนเลือก A/B
-2. เปิด A `/login` กดเข้าสู่ระบบด้วย App C → Login C → เข้า A
+2. เปิด A `/login` กดเข้าสู่ระบบด้วย App C → เข้า A ตามสิทธิ์ ถ้ายังไม่ได้ Login C จึงต้องกรอกรหัสผ่าน C
 3. เปิด B `/sso` ใน browser เดียวกัน → เข้า B ไม่ถาม password C ซ้ำ
 4. เปิด C dashboard → Login C ยังอยู่ และกดลิงก์ A/B ได้
-5. Logout C → แท็บ SSO ของ A/B กลับ Login; Login ด้วยบัญชีของระบบ ของอีก browser คงอยู่
+5. Logout C → แท็บ SSO ของแอปที่ตั้ง Logout URL ไว้กลับ Login; session จาก Login ด้วยบัญชี A/B เองยังคงอยู่
 6. สร้าง user C ที่ไม่มี read A → กด SSO A ได้ modal ไม่มีสิทธิ์
 7. ให้ read แต่ไม่มีบัญชีในระบบ A → ได้ modal ไม่มีผู้ใช้ตรงกัน
 8. หยุดเฉพาะ Keycloak แล้วกดปุ่ม SSO A/B → ตรวจพร้อม 3 ครั้งและ modal อยู่หน้าเดิม
@@ -412,7 +516,7 @@ docker compose start keycloak
 npm run test:integration
 ```
 
-Integration test ตั้ง token 3 วินาทีและเร่ง heartbeat ด้วยการแทรก script จาก test เท่านั้น เมื่อจบคืน lifespan เดิม/เริ่ม Keycloak กลับและลบบัญชี fixture สองบัญชีที่สร้างขึ้น ไม่รอหนึ่งชั่วโมงจริง รายละเอียดผลอยู่ใน [TEST-RESULTS.json](../flows/TEST-RESULTS.json)
+Integration test ตั้ง token 3 วินาทีและเร่ง heartbeat ด้วยการแทรก script จาก test เท่านั้น เตรียม Logout URLs ของ A/B/C ชั่วคราวสำหรับกรณีทดสอบ เมื่อจบคืนรายการ URL กับ lifespan เดิม เริ่ม Keycloak กลับ และลบบัญชี fixture สองบัญชีที่สร้างขึ้น ไม่รอหนึ่งชั่วโมงจริง รายละเอียดผลอยู่ใน [TEST-RESULTS.json](../flows/TEST-RESULTS.json)
 
 ### ตรวจข้อมูล token ผ่าน Browser
 
@@ -437,9 +541,19 @@ Integration test ตั้ง token 3 วินาทีและเร่ง he
 
 ### การเพิ่มแอปและค่าที่อ่านจากการตั้งค่า
 
-เมนู SSO Tokens และรายการตัวกรองอ่าน registered clients จาก Keycloak ส่วน extension อ่าน audience, authority, IdP, system-id และ logout URL จาก attributes ไม่ฝังชื่อ A/B/C ในตาราง
+| ส่วน                            | สถานะปัจจุบัน                                             | ตำแหน่ง                                                                                                |
+| ------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Logout C / แก้สิทธิ์ / IdP down | เพิ่ม/ลบ URL ได้ใน Sessions → Logout; ไม่ต้องมี Client ID | Realm attribute temporary.sso.logout-urls                                                              |
+| รายการ token และตัวกรอง         | อ่าน registered clients จาก Keycloak                      | [RealmSsoConfiguration](../../keycloak/src/main/java/lab/sso/config/RealmSsoConfiguration.java)        |
+| Login SSO จาก C                 | ยังมี targets สำหรับ A/B ใน callback และ permission key   | [api-sso.js](../../app-control/src/sso/api-sso.js)                                                     |
+| สร้าง app_permissions           | ยังจับคู่ app-a/app-b กับ allow_a/allow_b                 | [control-proof.js](../../app-control/src/sso/control-proof.js)                                         |
+| เก็บและแก้สิทธิ์ใน C            | ยังใช้คอลัมน์ allow_a/allow_b และ write/delete แยก A/B    | [database.js](../../app-control/src/db/database.js), [routes.js](../../app-control/src/routes.js)      |
+| หน้าจัดการสิทธิ์และ dashboard C | ยังระบุรายการ A/B                                         | [users.ejs](../../app-control/views/users.ejs), [dashboard.ejs](../../app-control/views/dashboard.ejs) |
+| URL ที่อนุญาตใน browser         | บาง origin/port ยังอยู่ใน CSP ของแอป                      | [C server](../../app-control/src/server.js), [A/B server](../../app/src/server.js)                     |
 
-อย่างไรก็ตาม **PoC ทั้งชุดยังรองรับปลายทาง A/B ที่กำหนดไว้** เช่น `targets` ใน C, permission columns ของฐานข้อมูล C, Compose และสคริปต์ configure การเพิ่ม client ใหม่ใน Keycloak เพียงอย่างเดียวจึงยังไม่ทำให้มีแอปใหม่ที่ Login ได้อัตโนมัติ ต้องปรับส่วนแอปและการตั้งค่าที่เกี่ยวข้องด้วย
+**Logout ใช้รายการ URL เดียวกัน:** Logout C และการแก้สิทธิ์ให้ C ส่ง notification ตามรายการที่ Keycloak คืนมา ส่วน IdP down ให้ Keycloak ส่งเอง การลบ URL แล้วกด Save หยุดการแจ้งทันทีไปปลายทางนั้น แต่ token กลางยังถูก revoke และแอปยังต้องตรวจพบจาก heartbeat หรือการตรวจตามเงื่อนไขของแอป
+
+การเพิ่ม Logout URL ไม่ได้ทำให้ระบบใหม่ Login ผ่าน SSO ได้ทันที หากต้องรองรับหลายแอปในส่วน Login/permissions ด้วย ต้องปรับทะเบียนแอป การเก็บสิทธิ์ หน้าจอ C และ CSP ที่ยังระบุ A/B ส่วน Compose และ `lab:configure` เป็นค่าตั้งต้นของแล็บ A/B/C และการรัน configure ซ้ำยังเขียนค่าตามสคริปต์ทับ UI
 
 ### เปลี่ยนขั้นตอนผ่าน Authentication Flows ได้หรือไม่
 

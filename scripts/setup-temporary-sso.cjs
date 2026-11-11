@@ -88,10 +88,16 @@ async function admin(method, path, body) {
     attributes: {
       "temporary.sso.audience": env.KC_AUDIENCE,
       "temporary.sso.issuer": env.KC_ISSUER,
+      "temporary.sso.logout-urls": JSON.stringify([
+        "http://app-a:4001/logout/control",
+        "http://app-b:4001/logout/control",
+        "http://app-control:4003/logout/keycloak",
+      ]),
       "temporary.sso.idp-heartbeat.enabled": "true",
       "temporary.sso.idp-heartbeat.interval-seconds": "60",
+      "temporary.sso.idp-heartbeat.confirmation-interval-seconds": "5",
       "temporary.sso.idp-heartbeat.failure-threshold": "3",
-      "temporary.sso.idp-heartbeat.health-url": "http://app-control:4003/health",
+      "temporary.sso.idp-heartbeat.idp-alias": env.KC_IDP_ALIAS,
       "temporary.sso.authority-client": env.KC_AUTHORITY_CLIENT,
       "temporary.sso.idp": env.KC_IDP_ALIAS,
     },
@@ -115,6 +121,7 @@ async function admin(method, path, body) {
       issuer: "http://localhost:4003/oidc",
       jwksUrl: "http://app-control:4003/oidc/jwks",
       useJwksUrl: "true",
+      ssoHealthCheckUrl: "http://app-control:4003/health",
     },
   };
   const providers = await admin("GET", "/" + realm + "/identity-provider/instances");
@@ -146,9 +153,6 @@ async function admin(method, path, body) {
       attributes: {
         "temporary.sso.enabled": "true",
         "temporary.sso.role": port ? "application" : "authority",
-        "temporary.sso.logout-url": port
-          ? `http://${client}:4001/logout/control`
-          : "http://app-control:4003/logout/keycloak",
         ...(port ? { "temporary.sso.system-id": client } : {}),
       },
     };

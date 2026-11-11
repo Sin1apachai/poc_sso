@@ -19,6 +19,7 @@ const kc = "http://localhost:8080",
 let adminToken,
   browser,
   originalRealm,
+  originalLogoutUrls,
   originalPermissions,
   stopped = false;
 const fixtureSuffix = require("node:crypto").randomBytes(4).toString("hex");
@@ -122,6 +123,19 @@ async function run() {
   await ready();
   await adminLogin();
   originalRealm = await admin("GET", "");
+  originalLogoutUrls = (await admin("GET", "/sso-session-settings")).logoutUrls;
+  // These cases require all three recipients; restore the user's URL choices afterward.
+  await admin("PUT", "/sso-session-settings", {
+    sessionSettings: {},
+    logoutUrls: [
+      ...new Set([
+        ...originalLogoutUrls,
+        "http://app-a:4001/logout/control",
+        "http://app-b:4001/logout/control",
+        "http://app-control:4003/logout/keycloak",
+      ]),
+    ],
+  });
   originalPermissions = sql(
     "app-control",
     "SELECT allow_a_write,allow_a_delete FROM users WHERE username='admin'",
@@ -493,7 +507,15 @@ async function run() {
       try {
         await adminLogin();
         await admin("PUT", "", { accessTokenLifespan: originalRealm.accessTokenLifespan });
-      } catch {}
+        if (originalLogoutUrls)
+          await admin("PUT", "/sso-session-settings", {
+            sessionSettings: {},
+            logoutUrls: originalLogoutUrls,
+          });
+      } catch (error) {
+        console.error("Could not restore test realm settings:", error.message);
+        process.exitCode = 1;
+      }
     }
     // Remove only test fixture accounts created by this script, not ordinary user data.
     try {

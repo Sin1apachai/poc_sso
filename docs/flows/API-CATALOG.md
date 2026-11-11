@@ -27,24 +27,24 @@ A/B ใช้โค้ดเดียวกัน รวม **28 routes** Script
 
 ## C — 16 routes
 
-| Method/path              | หน้าที่                                                                                    |
-| ------------------------ | ------------------------------------------------------------------------------------------ |
-| `GET /health`            | ตรวจฐานข้อมูล                                                                              |
-| `GET /sso/authorize`     | รับ client/state/challenge ตรวจ session C; ไม่มี session แสดงหน้า Login ใน response นี้เลย |
-| `GET /login`             | หน้า Login C ปกติ หรือเปิดคำขอที่รออยู่                                                    |
-| `POST /login`            | ตรวจรหัสผ่าน สร้าง session C และส่ง proof ต่อใน response เดิม หรือไป dashboard             |
-| `GET /oidc/jwks`         | public signing keys ของ C ไม่มี private key                                                |
-| `POST /logout/keycloak`  | รับ IdP-scoped logout ที่ Keycloak ลงลายเซ็น ล้างสถานะ token กลางเก่าของ C เมื่อฟื้นตัว    |
-| `POST /logout`           | ปิดต้นทาง ขอ Keycloak ยกเลิก token แจ้ง A/B แล้วล้าง session C                             |
-| `POST /sso/retry`        | ขอ token กลาง C ใหม่สูงสุด 3 ครั้ง                                                         |
-| `GET /sso/status`        | แจ้งความพร้อม SSO และเวลาหมดอายุ โดยไม่ส่ง token ให้หน้าเว็บ                               |
-| `GET /connect/:system`   | ตรวจสิทธิ์และความพร้อม ก่อน redirect ไป SSO ของแอป                                         |
-| `GET /session/heartbeat` | ตรวจ session Login ของ C                                                                   |
-| `GET /`                  | dashboard C และลิงก์ A/B                                                                   |
-| `GET /users`             | หน้าจัดการบัญชีและสิทธิ์ เฉพาะ admin                                                       |
-| `POST /users`            | เพิ่ม user และสิทธิ์ในฐานข้อมูล C เท่านั้น                                                 |
-| `POST /users/:id`        | แก้บัญชี/สิทธิ์ แล้ว revoke และแจ้ง A/B                                                    |
-| `POST /users/:id/delete` | ปิดบัญชี revoke/แจ้ง A/B แล้วลบ user C                                                     |
+| Method/path              | หน้าที่                                                                                        |
+| ------------------------ | ---------------------------------------------------------------------------------------------- |
+| `GET /health`            | ตรวจฐานข้อมูล                                                                                  |
+| `GET /sso/authorize`     | รับ client/state/challenge ตรวจ session C; ไม่มี session แสดงหน้า Login ใน response นี้เลย     |
+| `GET /login`             | หน้า Login C ปกติ หรือเปิดคำขอที่รออยู่                                                        |
+| `POST /login`            | ตรวจรหัสผ่าน สร้าง session C และส่ง proof ต่อใน response เดิม หรือไป dashboard                 |
+| `GET /oidc/jwks`         | public signing keys ของ C ไม่มี private key                                                    |
+| `POST /logout/keycloak`  | รับ idp_logout จาก Keycloak หรือ control_logout จาก C; ตรวจลายเซ็นและล้างสถานะ token ตามขอบเขต |
+| `POST /logout`           | ปิดต้นทาง ขอ Keycloak ยกเลิก token แจ้งตาม Logout URLs แล้วล้าง session C                      |
+| `POST /sso/retry`        | ขอ token กลาง C ใหม่สูงสุด 3 ครั้ง                                                             |
+| `GET /sso/status`        | แจ้งความพร้อม SSO และเวลาหมดอายุ โดยไม่ส่ง token ให้หน้าเว็บ                                   |
+| `GET /connect/:system`   | ตรวจสิทธิ์และความพร้อม ก่อน redirect ไป SSO ของแอป                                             |
+| `GET /session/heartbeat` | ตรวจ session Login ของ C                                                                       |
+| `GET /`                  | dashboard C และลิงก์ A/B                                                                       |
+| `GET /users`             | หน้าจัดการบัญชีและสิทธิ์ เฉพาะ admin                                                           |
+| `POST /users`            | เพิ่ม user และสิทธิ์ในฐานข้อมูล C เท่านั้น                                                     |
+| `POST /users/:id`        | แก้บัญชี/สิทธิ์ แล้ว revoke และแจ้งตาม Logout URLs                                             |
+| `POST /users/:id/delete` | ปิดบัญชี revoke/แจ้งตาม Logout URLs แล้วลบ user C                                              |
 
 รวม A/B/C **44 routes** รวม HTML, JSON, callback และ SSE ไม่ใช่ JSON APIs ทั้งหมด
 
@@ -52,16 +52,16 @@ A/B ใช้โค้ดเดียวกัน รวม **28 routes** Script
 
 Custom base path: `/realms/sso-lab/temporary-sso-poc`
 
-| Method/path                                         | ผู้เรียก                     | ข้อมูลหลักและหน้าที่                                                                          |
-| --------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------- |
-| `GET /status`                                       | A/B backend                  | คืน issuer และ temporary_sso เพื่อ preflight                                                  |
-| `POST /bootstrap`                                   | C backend                    | C client authentication + assertion purpose sso_bootstrap; ออก token กลางร่วม aud sso-apps    |
-| `POST /authorize`                                   | Browser ในเฟรมที่ C เตรียม   | `assertion` ที่ C ลงลายเซ็น; ตรวจและส่ง token กลางใบเดิม พร้อมหลักฐาน handoff ไป callback A/B |
-| `GET /submit.js`                                    | Browser                      | ส่งฟอร์ม token เข้า callback A/B ภายในเฟรม                                                    |
-| `POST /introspect`                                  | A/B/C backend                | token + client_id + client_secret; ตรวจ JWT อายุและ cache TTL                                 |
-| `POST /revoke`                                      | C authority backend เท่านั้น | token + client authentication; ยกเลิก token รายใบ ไม่ผูกปุ่ม Logout A/B                       |
-| `POST /logout-user`                                 | C backend                    | signed logout assertion; ลบสถานะ token ผู้ใช้ตาม index และตั้ง cutoff ชั่วคราว                |
-| `GET /realms/sso-lab/protocol/openid-connect/certs` | A/B/C backend                | native Keycloak JWKS สำหรับตรวจ JWT กลาง                                                      |
+| Method/path                                         | ผู้เรียก                     | ข้อมูลหลักและหน้าที่                                                                                            |
+| --------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `GET /status`                                       | A/B backend                  | คืน issuer และ temporary_sso เพื่อ preflight                                                                    |
+| `POST /bootstrap`                                   | C backend                    | C client authentication + assertion purpose sso_bootstrap; ออก token กลางร่วม aud sso-apps                      |
+| `POST /authorize`                                   | Browser ในเฟรมที่ C เตรียม   | `assertion` ที่ C ลงลายเซ็น; ตรวจและส่ง token กลางใบเดิม พร้อมหลักฐาน handoff ไป callback A/B                   |
+| `GET /submit.js`                                    | Browser                      | ส่งฟอร์ม token เข้า callback A/B ภายในเฟรม                                                                      |
+| `POST /introspect`                                  | A/B/C backend                | token + client_id + client_secret; ตรวจ JWT อายุและ cache TTL                                                   |
+| `POST /revoke`                                      | C authority backend เท่านั้น | token + client authentication; ยกเลิก token รายใบ ไม่ผูกปุ่ม Logout A/B                                         |
+| `POST /logout-user`                                 | C backend                    | signed logout assertion; revoke ตามผู้ใช้และตั้ง cutoff; คืน revoked และ logout_urls โดยไม่ส่ง notification เอง |
+| `GET /realms/sso-lab/protocol/openid-connect/certs` | A/B/C backend                | native Keycloak JWKS สำหรับตรวจ JWT กลาง                                                                        |
 
 **7 custom endpoints + 1 native JWKS endpoint = 8** ไม่มี native OIDC authorization/token/introspection/revoke/End Session ใน Login/Logout ใหม่นี้ อย่าใช้ native endpoint แทน custom endpoint เพียงเพราะชื่อคล้ายกัน
 
@@ -86,6 +86,12 @@ Body ของคำขอเป็น form-urlencoded: `token`, `client_id`, `c
 ```
 
 เมื่อหมดอายุ, revoked, ไม่พบ token ใน cache หรือ client ผู้ตรวจไม่มี read จะได้ `{ "active": false }` ไม่ส่ง claims ทั้งหมดของ JWT กลับมา ส่วน credentials ผิดเป็น HTTP error ไม่ใช่ active=false และการ decode JWT เองไม่ได้ตรวจว่า token ถูก revoke ใน cache แล้วหรือไม่
+
+## Clients และ Client scopes ใน runtime
+
+Clients ยังใช้กับ custom endpoints: C ส่ง Client ID/Secret ของ authority ไป bootstrap/revoke; A/B ส่ง credentials ของตัวเองไป introspect และ Keycloak ตรวจ Client/redirect URI สำหรับ handoff ส่วน Client scopes และ protocol mappers ไม่ได้ใช้สร้าง token กลาง ซึ่งรับ app_permissions จาก proof ของ C โดยตรง
+
+การไม่มี Client ID ใน Sessions → Logout ใช้กับรายการปลายทางแจ้งทั้ง Logout C และ IdP down ไม่ได้ยกเลิก Clients ของ Login SSO
 
 ## การตรวจข้อมูลก่อนสร้าง Session
 
@@ -136,10 +142,12 @@ C รับ token กลางจาก bootstrap จากนั้น browser 
 | Login ด้วยบัญชีของระบบ A/B | K 0                          | อ่านบัญชี/รหัสผ่านของแอป                                                    |
 | Heartbeat SSO              | Browser → A/B 1; A/B → K 0–1 | หมดอายุแล้วล้าง session โดยไม่ introspect                                   |
 | Logout A/B                 | Browser 3; K 0               | POST logout → GET login/local → GET login                                   |
-| Logout C                   | C → K 1; C → A/B 2           | เพิ่ม browser POST logout และ GET login ของแต่ละแท็บ รวมทั้ง JWKS ตาม cache |
+| Logout C                   | C → K 1; C → Logout URLs N   | เพิ่ม browser POST logout และ GET login ของแต่ละแท็บ รวมทั้ง JWKS ตาม cache |
 | เพิ่ม user C               | K 0                          | ไม่ sync                                                                    |
-| แก้/ปิด/ลบ user C          | C → K 1; C → A/B 2           | revoke และให้เริ่ม SSO ใหม่เพื่อรับสิทธิ์ล่าสุด                             |
+| แก้/ปิด/ลบ user C          | C → K 1; C → Logout URLs N   | revoke และให้เริ่ม SSO ใหม่เพื่อรับสิทธิ์ล่าสุด                             |
 | Keycloak ล่ม               | preflight สูงสุด 3           | silent 1; ไม่ retry proof เดิมอัตโนมัติ                                     |
+
+N คือจำนวน Logout URLs ที่บันทึกไว้ใน Realm settings → Sessions → Logout เมื่อเอา URL ออกแล้ว Save จะไม่ส่ง notification ไปปลายทางนั้น แต่ token กลางยังถูก revoke ตามเดิม
 
 ## Setup และตรวจผล ไม่ใช่ Login runtime
 
@@ -178,11 +186,44 @@ Response: `items`, `clients`, `total`, `first`, `max`, `serverTime`; `clients` �
 
 ดู [คู่มือเมนูและภาพ UI](../keycloak/SETUP-GUIDE.md) กับ [ผลทดสอบ](../keycloak/TOKEN-MENU-TEST-RESULTS.json)
 
+## ทดสอบ IdP heartbeat — Admin API เพิ่ม 1 เส้น
+
+`POST /admin/realms/{realm}/idp-heartbeat/{alias}/test` ใช้ native Admin bearer และต้องมี realm-admin ของ realm เป้าหมาย ไม่ส่ง request body โดยอ่าน Health Check URL ที่บันทึกใน IdP alias นั้นเท่านั้น
+
+Keycloak เรียก GET ไปยัง URL หนึ่งครั้งด้วย probe เดียวกับ scheduler: timeout 3 วินาที, ไม่ตาม redirect, HTTP 2xx คือผ่าน การทดสอบไม่เปลี่ยน failure counter และไม่ revoke/logout ผู้ใช้ เรียกได้แม้ปิด heartbeat อัตโนมัติ คำขอ GET ไป IdP มี header `X-SSO-Heartbeat: manual` ส่วน scheduler ใช้ `scheduled` เพื่อแยก log ที่ C
+
+Response HTTP 200 มี `idpAlias`, `healthy`, `httpStatus` (null เมื่อไม่มี HTTP response), `durationMillis` และ `error` (null เมื่อสำเร็จ) HTTP 200 หมายถึงทำการทดสอบได้ ไม่ได้แปลว่า IdP พร้อมเสมอไป ให้ดู `healthy` ด้วย ส่วน URL ไม่ครบ/ไม่ถูกต้องเป็น 400, ไม่พบ IdP เป็น 404, ไม่มี admin bearer เป็น 401 และสิทธิ์ไม่พอเป็น 403
+
+Admin API ที่ส่วนขยายเพิ่มมี 4 เส้น รวม SSO Tokens, ทดสอบ heartbeat และ GET/PUT Sessions settings ด้านล่าง แยกจาก runtime 8 เส้นของ Login/Logout ปุ่ม Test heartbeat อยู่ใน Realm settings → Heartbeat ใช้ Target IdP ที่เลือก ส่วน Health Check URL แก้และบันทึกใน IdP Settings
+
+## Sessions / Logout URLs — Admin API เพิ่ม 2 เส้น
+
+- `GET /admin/realms/{realm}/sso-session-settings` คืน `logoutUrls` ซึ่งเป็นรายการ URL ที่ตั้งไว้ใน realm
+- `PUT /admin/realms/{realm}/sso-session-settings` บันทึกค่า session และรายการ URL จากปุ่ม Save ชุดเดิมของ Sessions ทั้งสองเส้นต้องใช้ native Admin bearer และ realm-admin
+
+ตัวอย่าง Body:
+
+```json
+{
+  "sessionSettings": { "ssoSessionIdleTimeout": 2592000 },
+  "logoutUrls": [
+    "https://application-one.example/logout/control",
+    "https://application-two.example/logout/control"
+  ]
+}
+```
+
+`logoutUrls` คือรายการเต็มที่ต้องการเก็บ เพิ่ม/ลบ URL ได้โดยไม่ต้องระบุ Client ID และไม่สร้าง Client ใน Keycloak ระบบเก็บเป็น JSON array ใน realm attribute `temporary.sso.logout-urls`
+
+บันทึกสำเร็จ HTTP 204 URL ผิดหรือซ้ำเป็น 400 ไม่มี Admin bearer เป็น 401 และสิทธิ์ไม่พอเป็น 403 Session fields รับเฉพาะชื่อที่หน้า Sessions ใช้ โดยเวลาเป็นจำนวนเต็มวินาทีตั้งแต่ 0 ขึ้นไป ตรวจข้อมูลทั้งหมดก่อนบันทึกใน transaction เดียว ไม่เปลี่ยน Client Secret หรือ client permissions
+
 ## Background IdP heartbeat — แยกจาก Login runtime
 
-Keycloak เรียก `GET` IdP Health URL ตามช่วงที่ตั้ง (ค่าเริ่มต้น C `/health` ทุก 60 วินาที) เมื่อไม่ผ่านครบเกณฑ์จะ revoke token แล้ว `POST /logout/control` ไป A/B และ `POST /logout/keycloak` ไป C โดยตรง A/B/C รับ `logout_token` ที่มี token_use idp_logout ลงลายเซ็นโดย Keycloak ไม่ออก access token เพิ่ม ถ้าแจ้งไม่สำเร็จลองใหม่ตามรอบตรวจ โดยคง cutoff ของเหตุการณ์เดิม
+Keycloak อ่านรายการปลายทางแจ้ง logout จาก realm attribute `temporary.sso.logout-urls` โดยไม่จำกัดเฉพาะ A/B/C การรับแจ้งใช้ signed token ที่มี `aud` เป็นกลุ่ม SSO ตาม `temporary.sso.audience` และ `token_use=idp_logout` ส่วน per-user `control_logout` ลงลายเซ็นโดย C และใช้ audience กลุ่มเดียวกัน C อ่าน `logout_urls` จากผลตอบกลับ `/logout-user` แล้วแจ้งตามรายการนี้ ทั้ง Logout C และการแก้สิทธิ์ไม่ใช้ targets A/B ในโค้ดเป็นปลายทาง Logout
 
-UI Sessions → Logout ใช้ native `GET /admin/realms/{realm}` และ `PUT /admin/realms/{realm}` อ่าน/บันทึก realm attributes ไม่เพิ่ม custom settings API การตรวจ Health URL ไม่ใช่การ introspect token ของผู้ใช้ที่ IdP
+Keycloak อ่าน IdP ที่เลือกใน `temporary.sso.idp-heartbeat.idp-alias` แล้วเรียก `GET` URL จาก IdP config `ssoHealthCheckUrl` ตามช่วงที่ตั้ง (ค่าเริ่มต้น C `/health` ทุก 60 วินาที และยืนยันซ้ำทุก 5 วินาทีเมื่อพบปัญหา โดยนับรวมครั้งแรกในเกณฑ์ 3 ครั้ง) เมื่อไม่ผ่านครบเกณฑ์จะ revoke token แล้ว POST ไปทุก Logout URL ที่ตั้งไว้ เช่น `/logout/control` ของ A/B และ `/logout/keycloak` ของ C A/B/C รับ `logout_token` ที่มี token_use idp_logout ลงลายเซ็นโดย Keycloak ไม่ออก access token เพิ่ม ถ้าแจ้งไม่สำเร็จลองใหม่ตามรอบตรวจปกติหลังยืนยันว่าล่ม โดยคง cutoff ของเหตุการณ์เดิม
+
+UI Realm settings → Heartbeat ใช้ native GET/PUT realm สำหรับรอบเวลา เกณฑ์ และ IdP ที่เลือก รายการ IdP อ่านจาก `GET /admin/realms/{realm}/identity-provider/instances` ส่วน Health Check URL ใช้ GET/PUT `/admin/realms/{realm}/identity-provider/instances/{alias}` ผ่านปุ่ม Save ของ IdP Settings ไม่เพิ่ม custom settings API การตรวจ Health URL ไม่ใช่การ introspect token ของผู้ใช้ที่ IdP
 
 ## Bruno collection
 

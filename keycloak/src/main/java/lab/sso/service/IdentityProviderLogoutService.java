@@ -10,7 +10,6 @@ import java.util.UUID;
 import lab.sso.config.RealmSsoConfiguration;
 import lab.sso.heartbeat.IdpHeartbeatSettings;
 import lab.sso.security.CentralTokenCodec;
-import org.keycloak.models.ClientModel;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.representations.AccessToken;
@@ -29,24 +28,23 @@ public final class IdentityProviderLogoutService {
         this.httpClient = httpClient;
     }
 
-    public boolean notifyClient(String clientId, long cutoffMillis) {
-        ClientModel client = session.clients().getClientByClientId(realm, clientId);
-        if (client == null || !client.isEnabled()) return true;
+    public boolean notifyEndpoint(String logoutUrl, long cutoffMillis) {
         try {
-            var endpoint = IdpHeartbeatSettings.requireHttpUrl(client.getAttribute("temporary.sso.logout-url"));
+            var endpoint = IdpHeartbeatSettings.requireHttpUrl(logoutUrl);
             long now = System.currentTimeMillis() / 1000;
             AccessToken proof = new AccessToken();
             proof.id(UUID.randomUUID().toString());
             proof.issuer(configuration.getIssuer());
             proof.subject("idp:" + configuration.getIdentityProviderAlias());
-            proof.audience(clientId);
+            proof.audience(configuration.getAudience());
             proof.type("idp_logout");
             proof.iat(now);
             proof.exp(now + 60);
             proof.setOtherClaims("token_use", "idp_logout");
             proof.setOtherClaims("idp", configuration.getIdentityProviderAlias());
             proof.setOtherClaims("revoked_before", cutoffMillis);
-            String encoded = new CentralTokenCodec(session, configuration).encode(proof, client);
+            String encoded = new CentralTokenCodec(session, configuration).encode(proof,
+                    session.clients().getClientByClientId(realm, configuration.getAuthorityClientId()));
             String body = "logout_token=" + URLEncoder.encode(encoded, StandardCharsets.UTF_8);
             HttpRequest request = HttpRequest.newBuilder(endpoint).timeout(Duration.ofSeconds(3))
                     .header("Content-Type", "application/x-www-form-urlencoded")

@@ -87,6 +87,10 @@ public final class RealmSsoConfiguration {
                 .collect(Collectors.toSet());
     }
 
+    public List<String> getLogoutUrls() {
+        return new RealmLogoutTargets(realm).read();
+    }
+
     public List<Map<String, String>> describeSsoClients() {
         return session.clients().getClientsStream(realm)
                 .filter(client -> client.isEnabled() && isSsoEnabled(client))

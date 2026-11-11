@@ -1,9 +1,9 @@
 {
-  "testedAt": "2026-11-11T03:22:43.981Z",
+  "testedAt": "2026-11-11T08:39:46.873Z",
   "keycloak": "26.8.1",
   "mode": "real Admin Console + A/B/C",
   "tests": [
-    "Token metadata API rejects anonymous requests and authenticated users without realm-admin",
+    "Token metadata and heartbeat test APIs reject users without realm-admin",
     "One shared C/A/B token appears with correct metadata; filter/pagination work; response has no raw JWT and realm users remain zero",
     "Native SSO Tokens navigation opens the real table; client filter and search work in Admin Console",
     "Existing Clients screen still works after adding the custom menu",

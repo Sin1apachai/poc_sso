@@ -63,9 +63,13 @@ printf '%s' 'admin-b-demo' | docker compose exec -T app-b node src/create-user.j
 - Login C สำเร็จแล้วเริ่มขอ token กลาง เมื่อได้รับและตรวจผ่านจึงแสดงว่า SSO พร้อมใช้งาน
 - Login SSO ตรวจสิทธิ์ read และบัญชี A/B ที่ email ตรงกัน หากไม่ผ่านจะกลับ Login พร้อม modal
 - เปิดแอปเพิ่มผ่าน SSO ใช้ token กลางใบเดิมและไม่เริ่มนับอายุใหม่
-- Logout A/B ออกเฉพาะระบบนั้น ส่วน Logout C ยกเลิก token ของผู้ใช้และแจ้ง A/B ให้ออกจาก SSO
-- Keycloak ตรวจความพร้อมของ C ตามรอบที่ตั้งใน Realm settings → Sessions → Logout หาก C ขัดข้องครบเกณฑ์ จะยกเลิก token และแจ้งแอปโดยตรง
+- Logout A/B ออกเฉพาะระบบนั้น ส่วน Logout C ยกเลิก token ของผู้ใช้และแจ้งปลายทางตาม Realm settings → Sessions → Logout ให้ออกจาก SSO การลบ URL แล้ว Save หยุดการแจ้งทันที แต่แอปนั้นยังตรวจพบ token ถูก revoke จาก heartbeat ได้
+- Keycloak ตรวจ C ตามรอบปกติ และใช้ระยะห่างยืนยันซ้ำเมื่อพบปัญหา ตั้งจำนวนครั้ง เวลาทั้งสอง และเลือก IdP ได้ใน Realm settings → Heartbeat ส่วน Health Check URL ตั้งใน Identity providers → Settings หาก C ขัดข้องครบเกณฑ์ จะยกเลิก token และแจ้งแอปโดยตรง
 - เมื่อ Keycloak ติดต่อไม่ได้ ระบบแจ้งข้อผิดพลาด ส่วน Login ด้วยบัญชีของ A/B ยังคงใช้ได้
+
+**Clients ยังใช้ใน Login SSO** สำหรับยืนยันแอปและตรวจ handoff แต่ Client scopes ของ A/B/C ว่าง เพราะส่วนขยายสร้าง claims เอง การไม่ระบุ Client ID ใน Logout URLs ไม่ได้ยกเลิก Clients ของ Login
+
+**ส่วนที่เพิ่มได้แบบ dynamic ตอนนี้คือ Logout URLs ของ Keycloak** ส่วนทะเบียนแอป สิทธิ์ และหน้าจอ C ยังระบุ A/B ดู [ขอบเขตและจุดที่ยังผูกกับ A/B](docs/keycloak/SETUP-GUIDE.md#การเพิ่มแอปและค่าที่อ่านจากการตั้งค่า)
 
 ## ข้อมูลและอายุ Session
 
@@ -73,7 +77,7 @@ printf '%s' 'admin-b-demo' | docker compose exec -T app-b node src/create-user.j
 
 Session จาก Login ด้วยบัญชีของแต่ละระบบมีอายุสูงสุด 1 ชั่วโมง ส่วน session SSO ของ A/B ใช้ได้ไม่เกิน token กลาง ปกติ 15 นาที ไม่มี refresh token Browser ตรวจ session SSO ทุก 1 ชั่วโมง และระบบตรวจอายุ token เมื่อมีคำขอใช้งาน
 
-Token ของแอปและ token กลางเก็บฝั่ง server Browser ถือ cookie อ้างอิง session รายละเอียดอยู่ใน [อายุ session และ cookies](docs/keycloak/SETUP-GUIDE.md#อายุ-session-cookies-และแหล่งเก็บข้อมูล)
+Token ของแอปและ token กลางเก็บฝั่ง server Browser ถือ cookie อ้างอิง session A/B เก็บ token กลางที่ `public.session` → JSON `sess.sso.accessToken` ในฐานข้อมูลของตัวเอง ดู [วิธีเชื่อม PostgreSQL และ query token](docs/keycloak/SETUP-GUIDE.md#เชื่อม-postgresql-และหา-token-ที่-ab-เก็บไว้) รายละเอียด session อยู่ใน [อายุ session และ cookies](docs/keycloak/SETUP-GUIDE.md#อายุ-session-cookies-และแหล่งเก็บข้อมูล)
 
 ## ตรวจสอบและทดสอบ
 
@@ -84,17 +88,21 @@ npm run format:check
 npm run test:integration
 npm run test:token-menu
 npm run test:idp-heartbeat
+npm run test:session-logout
 ```
 
-ชุดทดสอบ Browser ต้องมี Google Chrome และตั้ง CHROME_PATH ได้ รายงานแยกตามขอบเขต:
+ชุดทดสอบ Browser ใช้ Google Chrome บน macOS ตาม path ที่กำหนดในสคริปต์ รายงานแยกตามขอบเขต:
 
-| ชุดทดสอบ           | สิ่งที่ตรวจ                                                 | รายงาน                                                             |
-| ------------------ | ----------------------------------------------------------- | ------------------------------------------------------------------ |
-| test:integration   | Login, SSO, สิทธิ์, Logout, อายุ token และ Keycloak ขัดข้อง | [ผลทดสอบกระบวนการ](docs/flows/TEST-RESULTS.json)                   |
-| test:token-menu    | สิทธิ์ผู้ดูแล ตัวกรอง และรายการ token                       | [ผลทดสอบเมนู](docs/keycloak/TOKEN-MENU-TEST-RESULTS.json)          |
-| test:idp-heartbeat | ตั้งรอบตรวจ C, C ขัดข้อง และการแจ้ง Logout                  | [ผลทดสอบ heartbeat](docs/keycloak/IDP-HEARTBEAT-TEST-RESULTS.json) |
+| ชุดทดสอบ            | สิ่งที่ตรวจ                                                  | รายงาน                                                                      |
+| ------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| test:integration    | Login, SSO, สิทธิ์, Logout, อายุ token และ Keycloak ขัดข้อง  | [ผลทดสอบกระบวนการ](docs/flows/TEST-RESULTS.json)                            |
+| test:token-menu     | สิทธิ์ผู้ดูแล ตัวกรอง และรายการ token                        | [ผลทดสอบเมนู](docs/keycloak/TOKEN-MENU-TEST-RESULTS.json)                   |
+| test:idp-heartbeat  | ตั้งรอบตรวจ C, C ขัดข้อง และการแจ้ง Logout                   | [ผลทดสอบ heartbeat](docs/keycloak/IDP-HEARTBEAT-TEST-RESULTS.json)          |
+| test:session-logout | Add/Remove URLs, Save/Revert และ Logout C ตาม URLs ที่บันทึก | [ผลทดสอบ Sessions / Logout](docs/keycloak/SESSION-LOGOUT-TEST-RESULTS.json) |
 
-Integration tests ใช้บริการจริงใน Compose โดยหยุด/เปิด Keycloak หรือ C ตามกรณีทดสอบและคืนค่าหลังจบ การทดสอบรอบเวลาเร่งจากฝั่ง test ไม่ได้รอหนึ่งชั่วโมงจริง ใช้กับสภาพแวดล้อมทดสอบและบัญชีตัวอย่างนี้
+เพิ่ม/ลบปลายทาง logout ได้ที่ **Realm settings → Sessions → Logout** ด้วย Logout URL แล้วใช้ Save/Revert ชุดเดิม อ่าน [คู่มือ](docs/keycloak/SETUP-GUIDE.md) และ [ผลทดสอบ Sessions / Logout](docs/keycloak/SESSION-LOGOUT-TEST-RESULTS.json)
+
+Integration tests ใช้บริการจริงใน Compose โดยหยุด/เปิด Keycloak หรือ C ตามกรณีทดสอบ เตรียม Logout URLs ของ A/B/C ชั่วคราวตามกรณี แล้วคืนรายการ URL และค่าที่เปลี่ยนหลังจบ การทดสอบรอบเวลาเร่งจากฝั่ง test ไม่ได้รอหนึ่งชั่วโมงจริง ใช้กับสภาพแวดล้อมทดสอบและบัญชีตัวอย่างนี้
 
 ## โครงสร้าง
 

@@ -9,12 +9,10 @@ const { saveSession } = require("../auth/auth");
 const targets = {
   "app-a": {
     callback: "http://localhost:4001/sso/callback",
-    logout: "http://app-a:4001/logout/control",
     read: "allow_a",
   },
   "app-b": {
     callback: "http://localhost:4002/sso/callback",
-    logout: "http://app-b:4001/logout/control",
     read: "allow_b",
   },
 };
@@ -137,7 +135,7 @@ async function revokeIssued(userId, sessionId = "admin-action") {
     "UPDATE central_sso_status SET status='failed',reason='logout',access_token=NULL,token_jti=NULL,updated_at=now() WHERE user_id=$1",
     [userId],
   );
-  // Revoke the shared central token and notify each application independently.
+  // Keycloak supplies the same configured URL list used by IdP outage notifications.
   const assertion = await sign(
     { token_use: "sso_logout", c_session: sessionId },
     config.kcIssuer,
@@ -151,21 +149,31 @@ async function revokeIssued(userId, sessionId = "admin-action") {
     redirect: "error",
   });
   if (!response.ok) throw Error("Central logout failed");
-  const cutoff = Date.now();
-  for (const [client, target] of Object.entries(targets)) {
-    const notification = await sign(
-      { token_use: "control_logout", revoked_before: cutoff },
-      client,
-      centralSubject(userId),
-    );
-    const result = await fetch(target.logout, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ logout_token: notification }),
-      signal: AbortSignal.timeout(5000),
-      redirect: "error",
-    });
-    if (!result.ok) throw Error("App logout failed");
-  }
+  const { logout_urls: urls } = await response.json();
+  if (!Array.isArray(urls) || urls.some((url) => typeof url !== "string"))
+    throw Error("Invalid logout configuration");
+  const notification = await sign(
+    {
+      token_use: "control_logout",
+      revoked_before: Date.now(),
+      source_sub: String(userId),
+      idp: config.kcIdpAlias,
+    },
+    config.kcAudience,
+    centralSubject(userId),
+  );
+  const results = await Promise.allSettled(
+    urls.map(async (url) => {
+      const result = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ logout_token: notification }),
+        signal: AbortSignal.timeout(5000),
+        redirect: "error",
+      });
+      if (!result.ok) throw Error("App logout failed");
+    }),
+  );
+  if (results.some((result) => result.status === "rejected")) throw Error("App logout failed");
 }
 module.exports = { authorize, completeLogin, loginRequest, revokeIssued };

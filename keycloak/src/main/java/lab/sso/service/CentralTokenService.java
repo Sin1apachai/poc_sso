@@ -39,6 +39,10 @@ public final class CentralTokenService {
         this.tokenRepository = tokenRepository;
     }
 
+    public java.util.List<String> getLogoutUrls() {
+        return configuration.getLogoutUrls();
+    }
+
     public String getIssuer() {
         return configuration.getIssuer();
     }

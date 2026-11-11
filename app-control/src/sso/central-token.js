@@ -2,7 +2,8 @@ const { pool } = require("../db/database");
 const config = require("../config");
 const { verifyAppToken } = require("../auth/app-token");
 const { sign, permissions, centralSubject } = require("./control-proof");
-let keys;
+const { getPublicJwks } = require("./signing-keys");
+let keys, ownKeys;
 function failure(reason, retryable = false) {
   return Object.assign(new Error("Central bootstrap failed"), { reason, retryable });
 }
@@ -102,28 +103,39 @@ async function revoke(token) {
 async function receiveGlobalLogout(req, res) {
   try {
     const jose = await import("jose");
-    keys ||= jose.createRemoteJWKSet(
-      new URL(config.kcInternalUrl + "/protocol/openid-connect/certs"),
-      { timeoutDuration: 3000 },
-    );
-    const { payload } = await jose.jwtVerify(req.body.logout_token, keys, {
-      issuer: config.kcIssuer,
-      audience: config.kcAuthorityClient,
+    const fromControl = jose.decodeJwt(req.body.logout_token).iss === config.oidcIssuer;
+    const verificationKeys = fromControl
+      ? (ownKeys ||= jose.createLocalJWKSet(await getPublicJwks()))
+      : (keys ||= jose.createRemoteJWKSet(
+          new URL(config.kcInternalUrl + "/protocol/openid-connect/certs"),
+          { timeoutDuration: 3000 },
+        ));
+    const { payload } = await jose.jwtVerify(req.body.logout_token, verificationKeys, {
+      issuer: fromControl ? config.oidcIssuer : config.kcIssuer,
+      audience: config.kcAudience,
       algorithms: ["RS256"],
       requiredClaims: ["sub", "iat", "exp", "jti", "token_use", "idp", "revoked_before"],
       maxTokenAge: "2m",
     });
     if (
-      payload.token_use !== "idp_logout" ||
+      payload.token_use !== (fromControl ? "control_logout" : "idp_logout") ||
       payload.idp !== config.kcIdpAlias ||
       !Number.isSafeInteger(payload.revoked_before) ||
       payload.revoked_before > Date.now() + 1000
     )
       return res.sendStatus(400);
+    if (
+      fromControl &&
+      (typeof payload.source_sub !== "string" ||
+        !/^[0-9]+$/.test(payload.source_sub) ||
+        payload.sub !== centralSubject(payload.source_sub))
+    )
+      return res.sendStatus(400);
     await pool.query(
       `UPDATE central_sso_status SET status='failed',reason='logout',access_token=NULL,token_jti=NULL,updated_at=now()
-      WHERE access_token IS NOT NULL AND updated_at<=to_timestamp($1::double precision/1000)`,
-      [payload.revoked_before],
+      WHERE access_token IS NOT NULL AND updated_at<=to_timestamp($1::double precision/1000)
+        AND ($2::text IS NULL OR user_id::text=$2)`,
+      [payload.revoked_before, fromControl ? payload.source_sub : null],
     );
     return res.sendStatus(200);
   } catch {

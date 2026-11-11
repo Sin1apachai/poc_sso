@@ -54,7 +54,7 @@ Token ที่ได้เก็บใน runtime variable `central_access_toke
 
 Run Collection 01–07 ทำได้ทั้งหมด แต่ 07 อาจได้ `revoked: 0` เพราะ 06 ยกเลิก token ไปก่อนแล้ว เป็นผลปกติ ไม่ใช่ logout ล้มเหลว
 
-การเรียก `/revoke` หรือ `/logout-user` ตรงใน Keycloak ทำเฉพาะการเพิกถอน token ปุ่ม Logout ของ C จริงยังมีขั้นตอนแจ้ง A/B เพิ่มอีก หากเรียกตรง แอปตรวจพบ inactive ตาม heartbeat หรือเงื่อนไขตรวจของแอป ไม่ได้มี browser logout ทันทีจาก collection นี้
+การเรียก `/revoke` หรือ `/logout-user` ตรงใน Keycloak ทำเฉพาะการเพิกถอน token ผลตอบกลับ `/logout-user` มี `revoked` และ `logout_urls` โดยปุ่ม Logout ของ C จริงอ่านรายการนี้แล้วแจ้งปลายทางเพิ่มอีก หากเรียกตรง แอปตรวจพบ inactive ตาม heartbeat หรือเงื่อนไขตรวจของแอป ไม่ได้มี browser logout ทันทีจาก collection นี้
 
 Heartbeat Keycloak → C เป็น background task จึงไม่มี request สำหรับ trigger scheduler ใน collection นี้ และไม่ต้องเพิ่ม Admin API ที่แก้ settings เพื่อทดสอบ token
 
