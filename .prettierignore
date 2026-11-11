@@ -12,3 +12,11 @@ docs/flows/images/
 
 # Generated guide diagrams
 docs/keycloak/images/*.svg
+
+scripts/.inspect-ui-*/
+
+scripts/.diagram-profile-*/
+
+scripts/.sso-jwks-*/
+
+scripts/.test-artifacts/

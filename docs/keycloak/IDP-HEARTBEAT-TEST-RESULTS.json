@@ -1,0 +1,12 @@
+{
+  "testedAt": "2026-11-11T03:19:20.181Z",
+  "mode": "real Keycloak scheduler + browser + C container outage",
+  "tests": [
+    "Sessions > Logout saves a custom heartbeat interval and failure threshold, survives reload, and preserves native session settings",
+    "Stopping C automatically revokes central tokens and pushes A/B to Login through Keycloak, while independent local A stays logged in",
+    "A central access token cannot be reused as a Keycloak global-logout notification",
+    "C recovery clears its old central-token status, permits a fresh token, and allows explicit SSO to A/B again",
+    "When A misses the push, its existing heartbeat checks the revoked token at Keycloak and removes the SSO session",
+    "A delayed logout retry uses its original cutoff and does not delete a newer SSO login"
+  ]
+}

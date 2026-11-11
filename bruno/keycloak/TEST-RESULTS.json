@@ -1,0 +1,28 @@
+{
+  "testedAt": "2026-11-11T03:52:58.574Z",
+  "tool": "Bruno CLI 4.3.0",
+  "target": "Real local Keycloak SSO extension",
+  "scenarios": [
+    {
+      "name": "All seven requests with app A",
+      "requests": 7,
+      "passed": 7
+    },
+    {
+      "name": "All seven requests with app B",
+      "requests": 7,
+      "passed": 7
+    },
+    {
+      "name": "Bootstrap, revoke, introspect inactive",
+      "requests": 3,
+      "passed": 3
+    },
+    {
+      "name": "Bootstrap, logout active fixture, introspect inactive",
+      "requests": 3,
+      "passed": 3
+    }
+  ],
+  "secretsIncluded": false
+}

@@ -45,6 +45,7 @@ public final class CentralTokenService {
 
     public Map<String, Object> issueCentralToken(ClientModel client, String encodedAssertion) {
         requireAuthority(client);
+        tokenRepository.requireIdentityProviderAvailable();
         IdentityAssertion assertion = assertionVerifier.verify(encodedAssertion, "sso_bootstrap");
         if (!configuration.getAuthorityClientId().equals(assertion.requireText("target_client"))) {
             throw new BadRequestException("Invalid bootstrap target");
@@ -66,6 +67,7 @@ public final class CentralTokenService {
     }
 
     public TokenHandoff prepareHandoff(String encodedAssertion) {
+        tokenRepository.requireIdentityProviderAvailable();
         IdentityAssertion assertion = assertionVerifier.verify(encodedAssertion, "sso_login");
         ClientModel application = configuration.requireApplicationClient(assertion.requireText("target_client"));
         String callbackUrl = assertion.requireText("redirect_uri");

@@ -5,7 +5,7 @@ const { execFileSync } = require("node:child_process");
 let count = 0;
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (["node_modules"].includes(entry.name)) continue;
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
     const file = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(file);
     else if (/\.(js|cjs)$/.test(file)) {

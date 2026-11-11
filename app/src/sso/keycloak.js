@@ -194,34 +194,40 @@ async function acceptPostedToken(req, res) {
   if (!members[0]) {
     return denyAccess(req, res, "missing-user", { showModal: !pending.silent });
   }
-  return withUserLock(claims.sub, async () => {
-    const { rows } = await pool.query(
-      "SELECT revoked_before FROM sso_logout_fences WHERE kc_sub=$1",
-      [claims.sub],
-    );
-    if (rows[0] && delivery.source_issued_ms <= Number(rows[0].revoked_before)) {
-      return rejectSession(req, res, "session-revoked");
-    }
-    await regenerateSession(req);
-    const acceptedAt = Date.now();
-    req.session.sso = {
-      userId: String(members[0].id),
-      appToken: await issueAppToken({
-        userId: members[0].id,
-        mode: "sso",
-        expiresAt: claims.exp * 1000,
-        centralSub: claims.sub,
-        centralSid: claims.sid || claims.jti,
-        permissions: claims.app_permissions[config.systemId],
-      }),
-      accessToken: body.access_token,
-      sub: claims.sub,
-      expiresAt: claims.exp,
-      checkedAt: acceptedAt,
-    };
-    await saveSession(req);
-    res.render("sso-complete", { controlOrigin: config.controlPublicUrl });
-  });
+  return withUserLock("idp:" + claims.idp, () =>
+    withUserLock(claims.sub, async () => {
+      const { rows } = await pool.query(
+        `SELECT revoked_before FROM sso_logout_fences WHERE kc_sub=$1
+       UNION ALL SELECT revoked_before FROM sso_idp_logout_fences WHERE idp=$2
+       ORDER BY revoked_before DESC LIMIT 1`,
+        [claims.sub, claims.idp],
+      );
+      if (rows[0] && delivery.source_issued_ms <= Number(rows[0].revoked_before)) {
+        return rejectSession(req, res, "session-revoked");
+      }
+      await regenerateSession(req);
+      const acceptedAt = Date.now();
+      req.session.sso = {
+        userId: String(members[0].id),
+        appToken: await issueAppToken({
+          userId: members[0].id,
+          mode: "sso",
+          expiresAt: claims.exp * 1000,
+          centralSub: claims.sub,
+          centralSid: claims.sid || claims.jti,
+          permissions: claims.app_permissions[config.systemId],
+        }),
+        accessToken: body.access_token,
+        sub: claims.sub,
+        idp: claims.idp,
+        expiresAt: claims.exp,
+        sourceIssuedMs: delivery.source_issued_ms,
+        checkedAt: acceptedAt,
+      };
+      await saveSession(req);
+      res.render("sso-complete", { controlOrigin: config.controlPublicUrl });
+    }),
+  );
 }
 
 async function rejectSession(req, res, reason, { showModal = false } = {}) {
@@ -332,17 +338,42 @@ async function controlLogout(req, res) {
     return res.sendStatus(400);
   }
   try {
-    const { jose, keys } = await controlVerifier();
+    const { jose } = await keycloakClient();
+    const issuer = jose.decodeJwt(req.body.logout_token).iss;
+    const fromKeycloak = issuer === config.kcIssuer;
+    if (!fromKeycloak && issuer !== config.controlPublicUrl + "/oidc") return res.sendStatus(400);
+    const { keys } = fromKeycloak ? await keycloakClient() : await controlVerifier();
     const { payload } = await jose.jwtVerify(req.body.logout_token, keys, {
-      issuer: config.controlPublicUrl + "/oidc",
+      issuer: fromKeycloak ? config.kcIssuer : config.controlPublicUrl + "/oidc",
       audience: config.kcClientId,
       algorithms: ["RS256"],
       requiredClaims: ["sub", "iat", "exp", "jti", "token_use", "revoked_before"],
       maxTokenAge: "2m",
     });
-    if (payload.token_use !== "control_logout" || !Number.isSafeInteger(payload.revoked_before)) {
+    if (!Number.isSafeInteger(payload.revoked_before) || payload.revoked_before > Date.now() + 1000)
       return res.sendStatus(400);
+    if (fromKeycloak) {
+      if (payload.token_use !== "idp_logout" || payload.idp !== config.kcIdpAlias)
+        return res.sendStatus(400);
+      await withUserLock("idp:" + payload.idp, async () => {
+        const { rows } = await pool.query(
+          `WITH receipt AS (
+          INSERT INTO logout_receipts(jti) VALUES($1) ON CONFLICT DO NOTHING RETURNING jti),
+        fence AS (INSERT INTO sso_idp_logout_fences(idp,revoked_before)
+          SELECT $2,$3::bigint WHERE EXISTS(SELECT 1 FROM receipt)
+          ON CONFLICT(idp) DO UPDATE SET revoked_before=GREATEST(sso_idp_logout_fences.revoked_before,EXCLUDED.revoked_before)
+          RETURNING idp)
+        DELETE FROM session WHERE sess->'sso'->>'sub' IS NOT NULL
+          AND COALESCE(sess->'sso'->>'idp',$2)=$2
+          AND COALESCE((sess->'sso'->>'sourceIssuedMs')::bigint,0)<=$3
+          AND EXISTS(SELECT 1 FROM fence) RETURNING sid`,
+          [payload.jti, payload.idp, payload.revoked_before],
+        );
+        for (const row of rows) logoutEvents.notify(row.sid);
+      });
+      return res.sendStatus(200);
     }
+    if (payload.token_use !== "control_logout") return res.sendStatus(400);
     await withUserLock(payload.sub, async () => {
       const { rows } = await pool.query(
         `WITH receipt AS (

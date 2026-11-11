@@ -1,0 +1,7 @@
+{
+  "version": "1",
+  "name": "SSO Lab - Keycloak APIs",
+  "type": "collection",
+  "ignore": ["node_modules", ".git"],
+  "scripts": { "filesystemAccess": { "allow": true } }
+}

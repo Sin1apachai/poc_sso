@@ -1,0 +1,41 @@
+meta {
+  name: 03 Bootstrap
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{keycloak_url}}/realms/{{realm}}/temporary-sso-poc/bootstrap
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  assertion: {{assertion}}
+  client_id: {{authority_client_id}}
+  client_secret: {{authority_client_secret}}
+}
+
+script:post-response {
+  if (res.getStatus() === 200) {
+    const body = res.getBody();
+    bru.setVar("central_access_token", body.access_token);
+    const claims = JSON.parse(Buffer.from(body.access_token.split(".")[1], "base64url").toString("utf8"));
+    bru.setVar("central_token_jti", claims.jti);
+  }
+}
+
+tests {
+  test("C receives a shared central token", () => {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().token_type).to.equal("Bearer");
+    expect(res.getBody().access_token).to.be.a("string");
+    expect(res.getBody().expires_in).to.be.within(1, 900);
+  });
+}
+
+docs {
+  จำลอง backend C ด้วย private key ในโครงการ ใช้ตัวตน bruno-UUID ใหม่ทุกครั้ง
+  ไม่สร้าง user ใน C/Keycloak และไม่ใช่ Login ของ browser
+  เก็บ token เป็น runtime variable central_access_token ไม่เขียน environment
+}

@@ -1,0 +1,23 @@
+meta {
+  name: 01 Status
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{keycloak_url}}/realms/{{realm}}/temporary-sso-poc/status
+  body: none
+  auth: none
+}
+
+tests {
+  test("Extension is available", () => {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().temporary_sso).to.equal(true);
+    expect(res.getBody().issuer).to.equal(bru.getEnvVar("keycloak_url") + "/realms/" + bru.getEnvVar("realm"));
+  });
+}
+
+docs {
+  ตรวจ extension พร้อมตอบ ไม่ได้ยืนยันว่า IdP online หรือมี user session
+}

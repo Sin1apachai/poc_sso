@@ -1,6 +1,8 @@
 package lab.sso.provider;
 
 import lab.sso.config.RealmSsoConfiguration;
+import lab.sso.heartbeat.IdentityProviderHeartbeatTask;
+import org.keycloak.timer.TimerProvider;
 import lab.sso.repository.TemporaryTokenRepository;
 import lab.sso.security.CentralTokenCodec;
 import lab.sso.security.IdentityAssertionVerifier;
@@ -53,7 +55,10 @@ public class CentralSsoResourceProviderFactory implements RealmResourceProviderF
 
     @Override
     public void postInit(KeycloakSessionFactory factory) {
-        // No global initialization is required.
+        try (KeycloakSession session = factory.create()) {
+            session.getProvider(TimerProvider.class).scheduleTask(
+                    new IdentityProviderHeartbeatTask(), 1000L, IdentityProviderHeartbeatTask.TASK_NAME);
+        }
     }
 
     @Override

@@ -1,0 +1,39 @@
+meta {
+  name: 04 Authorize
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{keycloak_url}}/realms/{{realm}}/temporary-sso-poc/authorize
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  assertion: {{assertion}}
+}
+
+tests {
+  test("Handoff carries the same central JWT and an app-bound proof", () => {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getHeader("content-type")).to.include("text/html");
+    const html = res.getBody();
+    const token = html.match(/name="access_token" value="([^"]+)"/);
+    const envelope = html.match(/name="handoff" value="([^"]+)"/);
+    expect(token).not.to.equal(null);
+    expect(envelope).not.to.equal(null);
+    expect(token[1]).to.equal(bru.getVar("central_access_token"));
+    const proof = JSON.parse(Buffer.from(envelope[1].split(".")[1], "base64url").toString("utf8"));
+    expect(proof.token_use).to.equal("sso_handoff");
+    expect(proof.central_jti).to.equal(bru.getVar("central_token_jti"));
+    expect(proof.sso_state).to.equal(bru.getVar("sso_state"));
+    expect(Array.isArray(proof.aud) ? proof.aud : [proof.aud]).to.include(bru.getVar("target_client_id"));
+  });
+}
+
+docs {
+  app=a หรือ b เลือกปลายทาง สร้าง proof ใหม่ทุก Send
+  คืน HTML ไม่ mint access token เพิ่ม Bruno ไม่รัน JavaScript เพื่อส่งฟอร์มเข้า A/B
+  Collection ไม่สร้าง pending Login/cookie ของ A/B จึงไม่ใช่การ Login แอปผ่าน browser
+}

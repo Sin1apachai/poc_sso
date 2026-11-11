@@ -12,7 +12,8 @@
     "lab:prepare": "node scripts/setup-temporary-sso.cjs --prepare-env",
     "lab:configure": "node scripts/setup-temporary-sso.cjs",
     "test:integration": "node scripts/test-temporary-sso.cjs",
-    "test:token-menu": "node scripts/test-token-menu.cjs"
+    "test:token-menu": "node scripts/test-token-menu.cjs",
+    "test:idp-heartbeat": "node scripts/test-idp-heartbeat.cjs"
   },
   "devDependencies": {
     "js-beautify": "1.15.4",

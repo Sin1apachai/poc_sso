@@ -99,4 +99,35 @@ async function revoke(token) {
   });
   if (!response.ok) throw failure("unavailable", true);
 }
-module.exports = { request, revoke };
+async function receiveGlobalLogout(req, res) {
+  try {
+    const jose = await import("jose");
+    keys ||= jose.createRemoteJWKSet(
+      new URL(config.kcInternalUrl + "/protocol/openid-connect/certs"),
+      { timeoutDuration: 3000 },
+    );
+    const { payload } = await jose.jwtVerify(req.body.logout_token, keys, {
+      issuer: config.kcIssuer,
+      audience: config.kcAuthorityClient,
+      algorithms: ["RS256"],
+      requiredClaims: ["sub", "iat", "exp", "jti", "token_use", "idp", "revoked_before"],
+      maxTokenAge: "2m",
+    });
+    if (
+      payload.token_use !== "idp_logout" ||
+      payload.idp !== config.kcIdpAlias ||
+      !Number.isSafeInteger(payload.revoked_before) ||
+      payload.revoked_before > Date.now() + 1000
+    )
+      return res.sendStatus(400);
+    await pool.query(
+      `UPDATE central_sso_status SET status='failed',reason='logout',access_token=NULL,token_jti=NULL,updated_at=now()
+      WHERE access_token IS NOT NULL AND updated_at<=to_timestamp($1::double precision/1000)`,
+      [payload.revoked_before],
+    );
+    return res.sendStatus(200);
+  } catch {
+    return res.sendStatus(400);
+  }
+}
+module.exports = { request, revoke, receiveGlobalLogout };

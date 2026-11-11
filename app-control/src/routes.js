@@ -99,6 +99,7 @@ async function createRoutes() {
     }
     return startCentralLogin(req, res);
   });
+  r.post("/logout/keycloak", require("./sso/central-token").receiveGlobalLogout);
   r.get("/oidc/jwks", async (req, res) => res.json(await getPublicJwks()));
   r.post("/logout", checkCsrf, async (req, res) => {
     const userId = req.session.local?.userId;

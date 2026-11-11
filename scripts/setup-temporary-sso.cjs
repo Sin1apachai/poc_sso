@@ -87,6 +87,11 @@ async function admin(method, path, body) {
     accessTokenLifespan: 900,
     attributes: {
       "temporary.sso.audience": env.KC_AUDIENCE,
+      "temporary.sso.issuer": env.KC_ISSUER,
+      "temporary.sso.idp-heartbeat.enabled": "true",
+      "temporary.sso.idp-heartbeat.interval-seconds": "60",
+      "temporary.sso.idp-heartbeat.failure-threshold": "3",
+      "temporary.sso.idp-heartbeat.health-url": "http://app-control:4003/health",
       "temporary.sso.authority-client": env.KC_AUTHORITY_CLIENT,
       "temporary.sso.idp": env.KC_IDP_ALIAS,
     },
@@ -141,6 +146,9 @@ async function admin(method, path, body) {
       attributes: {
         "temporary.sso.enabled": "true",
         "temporary.sso.role": port ? "application" : "authority",
+        "temporary.sso.logout-url": port
+          ? `http://${client}:4001/logout/control`
+          : "http://app-control:4003/logout/keycloak",
         ...(port ? { "temporary.sso.system-id": client } : {}),
       },
     };

@@ -1,29 +1,36 @@
-# Login และ Session ของ PoC จริง
+# กระบวนการ Login และจัดการ Session
 
-ยึดโค้ด `app/`, `app-control/` และ `keycloak/` ใน Compose ทุก flow มี sequence diagram และ flowchart อ่าน [ภาพรวม](README.md) และ [API catalog](API-CATALOG.md) ประกอบ
+เอกสารนี้อธิบายขั้นตอนการใช้งานและการทำงานระหว่างระบบ A/B, ระบบ C และ Keycloak แต่ละกรณีมี Sequence diagram และ Flowchart อ่าน [รายการกระบวนการ](README.md) และ [รายละเอียด API](API-CATALOG.md) ประกอบ
 
-ภาพเป็น Mermaid ฉบับใหม่ ไม่อ้าง PNG เดิมที่เป็นวิธี sync ผู้ใช้ C server เก็บ token กลางที่ได้จาก bootstrap และ Keycloak ไม่มี user row ของผู้ใช้ ตัวตนใน token อ้าง stable sub ที่คำนวณจาก issuer/subject C
+## วิธีอ่านภาพ
 
-## F01 — Login local A/B
+- **Login** คือการใช้บัญชีและรหัสผ่านของระบบที่เปิดอยู่ ส่วน **Login SSO** ใช้การยืนยันตัวตนจาก C
+- **Session** คือสถานะการเข้าสู่ระบบ แต่ละระบบเก็บ session ของตัวเอง
+- **Token กลาง** คือหลักฐานที่ Keycloak ออกให้ พร้อมสิทธิ์ของผู้ใช้ C/A/B ใช้ token ใบเดียวกันในรอบ SSO นั้น
+- **หลักฐานยืนยันตัวตน** คือข้อมูลที่ C ลงลายเซ็นให้ Keycloak ตรวจ ส่วน **หลักฐานส่งต่อ** ผูก token กับคำขอเข้าสู่แอปปลายทาง
+- **ผู้ใช้ / Browser** หมายถึง browser ที่ผู้ใช้เปิดอยู่ การเปลี่ยนหน้าและส่งแบบฟอร์มข้ามระบบจึงมีลูกศรผ่านจุดนี้
+- ตัวเลขใน Sequence diagram เป็นลำดับขั้นตอน ไม่ใช่จำนวน API requests ภาพแสดงขั้นตอนหลัก ส่วน URL, fields, HTTP status และจำนวนคำขออยู่ใน API catalog
 
-ผู้ใช้เลือกช่องทางปกติ ตรวจบัญชีในฐานข้อมูลแอปนั้น ไม่สร้าง token กลาง
+## F01 — Login A/B
+
+ผู้ใช้กรอกบัญชีและรหัสผ่านของ A หรือ B ระบบตรวจข้อมูลกับฐานข้อมูลของตัวเอง แล้วสร้าง session สำหรับใช้งานระบบนั้น
 
 ```mermaid
 sequenceDiagram
     autonumber
-actor U as User / Browser
+    actor U as ผู้ใช้ / Browser
     participant A as ระบบ A หรือ B
-    participant D as ฐานข้อมูลของแอป
-    U->>A: POST /login พร้อม CSRF
-    A->>D: ตรวจบัญชีและ password hash
-    D-->>A: ผลตรวจ
-    alt ถูกต้อง
-        A->>A: เปลี่ยน session ID และสร้าง app token/session
-        A-->>U: Redirect /
-        U->>A: GET /
-        A-->>U: แสดง LOCAL LOGIN
-    else ไม่ถูกต้อง
-        A-->>U: หน้า Login พร้อม error
+    participant D as ฐานข้อมูลของระบบ
+    U->>A: ส่งบัญชีและรหัสผ่าน
+    A->>D: ตรวจบัญชีและรหัสผ่าน
+    D-->>A: ผลการตรวจสอบ
+    alt ข้อมูลถูกต้อง
+        A->>A: สร้าง session ของระบบ
+        A-->>U: นำไปหน้าหลัก
+        U->>A: เปิดหน้าหลัก
+        A-->>U: แสดงข้อมูลผู้ใช้ที่เข้าสู่ระบบ
+    else ข้อมูลไม่ถูกต้อง
+        A-->>U: แสดงข้อผิดพลาดที่หน้า Login
     end
 ```
 
@@ -31,40 +38,40 @@ actor U as User / Browser
 
 ```mermaid
 flowchart TD
-S[Login local] --> V{บัญชีและรหัสผ่านถูกต้อง?}
-    V -->|ใช่| T[สร้าง app token/session ของแอปนี้]
-    T --> H[เข้าใช้งานแบบ local]
-    V -->|ไม่| E[แสดงข้อผิดพลาด]
+    S[Login] --> V{บัญชีและรหัสผ่านถูกต้อง?}
+    V -->|ถูกต้อง| T[สร้าง session ของระบบ]
+    T --> H[เปิดหน้าหลักและแสดงข้อมูลผู้ใช้]
+    V -->|ไม่ถูกต้อง| E[แจ้งข้อผิดพลาดที่หน้า Login]
 ```
 
 [เปิดภาพ PNG: F01 flowchart](images/f01-flowchart.png)
 
-Keycloak **0 requests ในการตรวจ local Login** หน้า Login ครั้งแรกอาจตรวจ silent SSO ก่อนแสดงฟอร์ม แต่ไม่ได้เปลี่ยนให้ local Login ใช้ token กลาง Login local A ไม่ทำให้ Login B หรือ C อัตโนมัติ
+ช่องทางนี้ไม่ขอ token กลาง การ Login A จึงไม่ทำให้เข้า B หรือ C ได้โดยอัตโนมัติ หน้า Login ครั้งแรกอาจตรวจ SSO เบื้องหลัง แต่การตรวจรหัสผ่านของช่องทาง Login ใช้ฐานข้อมูลของระบบเท่านั้น
 
-## F02 — Login C โดยตรง
+## F02 — Login C
 
-ยืนยันรหัสผ่าน C สำเร็จแล้วเริ่มขอ token กลางทันที ไม่รอเข้า A/B สถานะ success ต้องได้รับและตรวจ JWT แล้ว ไม่ใช่ผล healthcheck
+เมื่อ C ยืนยันรหัสผ่านสำเร็จ ผู้ใช้ใช้งาน C ได้ทันที และ C เริ่มขอ token กลางเพื่อเตรียม SSO เมื่อได้รับและตรวจ token ผ่านแล้วจึงแสดงว่า SSO พร้อมใช้งาน
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor U as User / Browser
+    actor U as ผู้ใช้ / Browser
     participant C as ระบบ C
-    participant K as Keycloak + ส่วนขยาย
-    U->>C: POST /login พร้อม CSRF
-    C->>C: ตรวจบัญชีและสร้าง app token/session C
-    C->>C: เริ่มงานขอ token กลางทันที
-    C-->>U: Redirect dashboard C แสดงกำลังขอ token
-    loop สูงสุด 3 ครั้งเมื่อออก token ไม่สำเร็จแบบชั่วคราว
-        C->>K: POST /bootstrap พร้อม signed proof ใหม่และ C client auth
-        K->>K: ตรวจหลักฐานและออก token กลาง aud sso-apps
-        K-->>C: Token กลางของ C
+    participant K as Keycloak
+    U->>C: ส่งบัญชีและรหัสผ่าน
+    C->>C: ตรวจบัญชีและสร้าง session C
+    par แสดงหน้าหลัก
+        C-->>U: นำไปหน้าหลัก C
+        U->>C: เปิดหน้าหลัก
+        C-->>U: แสดงความคืบหน้าการเตรียม SSO
+    and เตรียม SSO เบื้องหลัง
+        C->>K: ขอ token กลาง พร้อมหลักฐานจาก C
+        K->>K: ตรวจหลักฐานและออก token พร้อมสิทธิ์
+        K-->>C: ส่ง token กลาง
+        C->>C: ตรวจความถูกต้องและเก็บ token
     end
-    C->>C: ตรวจ signature issuer aud exp sub และ generation
-    C->>C: เก็บ C token ฝั่ง server แล้วตั้ง success
-    U->>C: GET /sso/status
-    C-->>U: tokenIssued true และเวลาหมดอายุ ไม่มี JWT ใน response
-    Note over C,K: มีแถว app-control ใน SSO Tokens ก่อนเปิด A/B
+    U->>C: ตรวจสถานะ SSO
+    C-->>U: แจ้งว่า SSO พร้อมใช้งาน พร้อมเวลาหมดอายุ
 ```
 
 [เปิดภาพ PNG: F02 sequence](images/f02-sequence.png)
@@ -72,171 +79,167 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     L[Login C] --> V{บัญชีและรหัสผ่านถูกต้อง?}
-    V -->|ไม่| E[ไม่สร้าง session]
-    V -->|ใช่| S[สร้าง app token และ session C]
-    S --> B[ขอ token กลางทันทีด้วย POST bootstrap]
-    B --> T{ได้รับและตรวจ JWT ผ่าน?}
-    T -->|ผ่าน| R[เก็บ C token และแสดงสำเร็จ]
-    T -->|error ชั่วคราว| Y[retry สูงสุด 3 ครั้ง proof ใหม่ทุกครั้ง]
-    Y --> B
-    Y -->|ครบแล้วยังไม่ผ่าน| F[failed และ modal แต่ local C ยังใช้ได้]
-    R --> A[เลือก A/B แล้วต่อ F04]
+    V -->|ไม่ถูกต้อง| E[แจ้งข้อผิดพลาดที่หน้า Login]
+    V -->|ถูกต้อง| S[สร้าง session C และเปิดหน้าหลัก]
+    S --> B[ขอ token กลางจาก Keycloak]
+    B --> T{ได้รับและตรวจ token ผ่าน?}
+    T -->|ผ่าน| R[เก็บ token และแสดงว่า SSO พร้อมใช้งาน]
+    T -->|ขัดข้องชั่วคราว| Y{ขอครบ 3 ครั้งแล้ว?}
+    Y -->|ยัง| B
+    Y -->|ครบแล้ว| F[แจ้งว่าเตรียม SSO ไม่สำเร็จ]
+    T -->|ข้อมูลหรือการตั้งค่าผิด| F
+    F --> C[ยังใช้งาน C ได้ และขอลอง SSO ใหม่ได้]
+    R --> A[เปิด A/B ผ่าน SSO ได้ตามสิทธิ์]
 ```
 
 [เปิดภาพ PNG: F02 flowchart](images/f02-flowchart.png)
 
-ปกติ C→Keycloak bootstrap **1 request**; หากติดต่อไม่ได้สูงสุด 3 พร้อมรอ 2 และ 5 วินาที ไม่ retry client/proof configuration errors แบบเดิมซ้ำ ทุกครั้งใช้ jti ของ proof ใหม่
+C เก็บ token ฝั่ง server หน้าเว็บได้รับเฉพาะสถานะและเวลาหมดอายุ รายการ token ดูได้ที่เมนู SSO Tokens ของ Keycloak การตรวจสถานะนี้ยืนยันว่าออก token สำเร็จแล้ว ไม่ใช่เพียงตรวจว่า Keycloak ตอบสนอง
 
-Token กลางมี aud sso-apps และ app_permissions รวมสิทธิ์ของผู้ใช้ เมื่อเข้า A/B จะรับ JWT ใบเดิมทุกตัวอักษร โดย Keycloak ส่งตรงผ่าน browser POST พร้อมหลักฐาน handoff อายุไม่เกิน 60 วินาทีซึ่งผูก state/challenge และ hash ของ token ไม่ได้ออก access token ใหม่
+## F03 — Login SSO A/B เมื่อยังไม่ได้เข้าสู่ระบบ C
 
-## F03 — กด SSO A/B เมื่อยังไม่มี session C
-
-Login C ครั้งเดียวได้ token กลางหนึ่งใบ จากนั้น Keycloak ส่งใบเดิมกลับ A/B ผ่าน browser POST พร้อมหลักฐาน handoff แยกจาก access token
+A/B ตรวจความพร้อมของ Keycloak แล้วนำผู้ใช้ไป Login C หลังยืนยันตัวตนสำเร็จ C ขอ token กลาง จากนั้น Keycloak ส่ง token ใบเดิมผ่าน Browser ไปยัง A/B
 
 ```mermaid
 sequenceDiagram
     autonumber
-actor U as User / Browser
+    actor U as ผู้ใช้ / Browser
     participant A as ระบบ A หรือ B
     participant C as ระบบ C
-    participant K as Keycloak + ส่วนขยาย
-    U->>A: POST /sso/preflight พร้อม CSRF
-    A->>K: GET /temporary-sso-poc/status
-    K-->>A: พร้อม
-    A->>A: เก็บ state/verifier ของ browser
-    A-->>U: URL เริ่ม Login C
-    U->>C: GET /sso/authorize พร้อม state/challenge/client
-    C-->>U: หน้า Login C
-    U->>C: POST /login
-    C->>C: ตรวจบัญชีและสร้าง token/session C
-    C->>C: ใช้คำขอ SSO ครั้งเดียวที่ผูกกับ session ก่อน Login
-    C->>K: POST /bootstrap เพื่อขอ token กลาง C
-    K-->>C: Token aud sso-apps
-    C->>C: ตรวจและเก็บ C token ก่อนดำเนินต่อ
-    C->>C: ลงลายเซ็น proof ด้วยสิทธิ์ที่อ่านล่าสุดในคำขอ Login เดิม
-    C-->>U: หน้าส่งต่อ proof ในเฟรม
-    U->>K: POST /temporary-sso-poc/authorize
-    K->>K: ตรวจ proof callback สิทธิ์ และ replay
-    K->>K: อ่าน token กลางเดิมจาก cache และเซ็นหลักฐาน handoff
-    K-->>U: ฟอร์ม token ใบเดิมและ handoff ไป A/B ภายในเฟรม
-    U->>A: POST /sso/callback พร้อม token เดิม/state/handoff
-    A->>A: ตรวจ JWT binding สิทธิ์ และบัญชี local
-    A->>A: สร้าง app token/session
-    A-->>U: หน้าสำเร็จในเฟรม ส่งสัญญาณสำเร็จที่ไม่มี token
-    U->>A: GET / ในหน้าหลัก
-    A-->>U: แสดง CENTRAL SSO
+    participant K as Keycloak
+    U->>A: เลือก Login SSO
+    A->>K: ตรวจความพร้อม
+    K-->>A: พร้อมใช้งาน
+    A-->>U: นำไปยืนยันตัวตนที่ C
+    U->>C: เปิดคำขอ Login SSO
+    C-->>U: แสดงหน้า Login C
+    U->>C: ส่งบัญชีและรหัสผ่าน
+    C->>C: ตรวจบัญชีและสร้าง session C
+    C->>K: ขอ token กลาง พร้อมตัวตนและสิทธิ์
+    K-->>C: ส่ง token กลาง
+    C->>C: ตรวจ token และสร้างหลักฐานคำขอ
+    C-->>U: ส่งแบบฟอร์มยืนยันคำขอสำหรับ Keycloak
+    U->>K: ส่งหลักฐานยืนยันคำขอ
+    K->>K: ตรวจคำขอ สิทธิ์ และอ่าน token ที่ออกแล้ว
+    K-->>U: ส่งแบบฟอร์ม token และหลักฐานส่งต่อไป A/B
+    U->>A: ส่ง token และหลักฐานส่งต่อ
+    A->>A: ตรวจ token สิทธิ์ และบัญชีในระบบ
+    A->>A: สร้าง session ของระบบ
+    A-->>U: แจ้งว่าเข้าสู่ระบบสำเร็จ
+    U->>A: เปิดหน้าหลัก
 ```
 
 [เปิดภาพ PNG: F03 sequence](images/f03-sequence.png)
 
 ```mermaid
 flowchart TD
-S[กด SSO A/B] --> P{Keycloak พร้อม?}
-    P -->|ไม่| E[Login และ modal ตาม F06]
-    P -->|พร้อม| C[Login C สร้าง sessionและขอ token กลาง C]
-    C --> F[C ลงลายเซ็น proof]
-    F --> K[Browser POST proof ให้ Keycloak ในเฟรม]
-    K --> V{หลักฐานและสิทธิ์ผ่าน?}
-    V -->|ไม่| D[ปฏิเสธหรือกลับ Login ตามเหตุผล]
-    V -->|ผ่าน| T[ส่ง token กลางใบเดิมและ handoff ตรง A/B ในเฟรม]
-    T --> A{JWT binding สิทธิ์และบัญชีแอปผ่าน?}
-    A -->|ไม่| D
-    A -->|ผ่าน| H[สร้าง session แล้วเปิดหน้าหลัก A/B]
+    S[เลือก Login SSO ที่ A/B] --> P{Keycloak พร้อมใช้งาน?}
+    P -->|ไม่พร้อม| E[แจ้งข้อผิดพลาดตาม F06]
+    P -->|พร้อม| C[Login C]
+    C --> V{ยืนยันตัวตนสำเร็จ?}
+    V -->|ไม่สำเร็จ| L[แสดงข้อผิดพลาดที่หน้า Login C]
+    V -->|สำเร็จ| B[สร้าง session C และขอ token กลาง]
+    B --> Q{เตรียม SSO สำเร็จ?}
+    Q -->|ไม่สำเร็จ| E
+    Q -->|สำเร็จ| F[ส่งหลักฐานคำขอผ่าน Browser ไป Keycloak]
+    F --> K{หลักฐานและสิทธิ์ผ่าน?}
+    K -->|ไม่ผ่าน| D[ปฏิเสธการเข้าสู่ระบบตาม F05]
+    K -->|ผ่าน| T[ส่ง token เดิมผ่าน Browser ไป A/B]
+    T --> A{token สิทธิ์ และบัญชีในระบบผ่าน?}
+    A -->|ไม่ผ่าน| D
+    A -->|ผ่าน| H[สร้าง session และเปิดหน้าหลัก A/B]
 ```
 
 [เปิดภาพ PNG: F03 flowchart](images/f03-flowchart.png)
 
-A/B ตรวจ RS256, issuer, audience, exp, required claims, `idp`, `temporary_identity`, state/challenge, read และ email ที่ตรงบัญชี local
+A/B ตรวจว่าลายเซ็นถูกต้อง ผู้ออก token และกลุ่มผู้รับตรงกับที่ตั้งค่า token ยังไม่หมดอายุ และหลักฐานส่งต่อผูกกับคำขอของ Browser นี้ จากนั้นตรวจสิทธิ์ read และบัญชีในฐานข้อมูลของแอปที่มี email ตรงกัน
 
-Login C ใน flow นี้เพิ่ม backend bootstrap C 1 request ปกติ และตรวจ C JWT ด้วย Keycloak JWKS เมื่อ cache ว่าง จากนั้นส่ง token ใบเดิมไป A/B ตามภาพ
+การส่งแบบฟอร์มทำในเฟรมที่ซ่อนอยู่ หากสำเร็จ Browser เปิดหน้าหลัก A/B หากส่งต่อไม่สำเร็จภายใน 12 วินาทีจะกลับหน้า Login พร้อมแจ้งข้อผิดพลาด คำขอ Login C ถูกใช้ครั้งเดียวในคำขอเดิม ไม่เพิ่มหน้าสำหรับเริ่มกระบวนการซ้ำ
 
-Browser มี **6 คำขอหลัก** ตาม [API catalog](API-CATALOG.md) และโหลด script ส่งต่อ 3 เส้นแยกต่างหาก A/B backend ตรวจพร้อม 1 ครั้งเมื่อปกติ ส่วน Keycloak โหลด C JWKS เพื่อยืนยัน proof และ A/B โหลด Keycloak JWKS เมื่อ cache ว่าง ไม่มี code exchange, redeem หรือ introspection ตอน Login
+## F04 — Login SSO A/B เมื่อมี session C อยู่แล้ว
 
-สัญญาณจาก callback ให้หน้าส่งต่อ C มีเพียง `sso-complete` ไม่มี token C script ตรวจทั้ง origin และหน้าต่างต้นทางก่อนเปิดหน้าหลัก A/B เฟรมนี้ทำให้ timeout กลับ Login ได้เมื่อ Keycloak ล่ม
-
-## F04 — มี session C แล้วเข้าอีกแอป
-
-ใช้ session C และ token กลางใบเดิม ไม่ถามรหัสผ่านซ้ำ สร้างเพียง proof/handoff ใหม่ผูกกับคำขอ Login ไม่สร้าง access token เพิ่ม
+C ใช้ session ที่ยังใช้งานได้เพื่อยืนยันตัวตน ผู้ใช้จึงไม่ต้องกรอกรหัสผ่านซ้ำ หาก token กลางยังใช้ได้ Keycloak ส่งใบเดิมไปยังแอปปลายทาง
 
 ```mermaid
 sequenceDiagram
     autonumber
-actor U as User / Browser
+    actor U as ผู้ใช้ / Browser
     participant A as ระบบ A หรือ B
     participant C as ระบบ C
-    participant K as Keycloak + ส่วนขยาย
-    opt เริ่มจากลิงก์ dashboard C
-        U->>C: GET /connect/app-a หรือ app-b
-        C-->>U: Redirect ไป /sso ของแอป
+    participant K as Keycloak
+    U->>A: เริ่ม Login SSO
+    A->>K: ตรวจความพร้อม
+    K-->>A: พร้อมใช้งาน
+    A-->>U: นำไปตรวจสถานะการเข้าสู่ระบบที่ C
+    U->>C: ส่งคำขอพร้อม session C
+    C->>C: ตรวจ session และสิทธิ์
+    opt C ต้องเตรียม token กลางใหม่
+        C->>K: ขอ token กลางใหม่
+        K-->>C: ส่ง token กลาง
+        C->>C: ตรวจและเก็บ token
     end
-    U->>A: GET /sso หรือ POST /sso/preflight
-    A->>K: GET /temporary-sso-poc/status
-    K-->>A: พร้อม
-    A-->>U: ไป C พร้อม state/challenge ใหม่
-    U->>C: GET /sso/authorize พร้อม cookie C
-    C->>C: ตรวจ session และ token กลาง C
-    opt ต้องขอ C token ใหม่
-        C->>K: POST /bootstrap
-        K-->>C: Token aud sso-apps
-        C->>C: ตรวจและเก็บ C token
-    end
-    C->>C: อ่านสิทธิ์ล่าสุดและลงลายเซ็น proof สำหรับ A/B
-    C-->>U: ฟอร์ม proof ในเฟรม
-    U->>K: POST /temporary-sso-poc/authorize
-    K-->>U: ฟอร์ม token เดิมและ handoff ตรงไป A/B
-    U->>A: POST /sso/callback
-    A->>A: ตรวจและสร้าง session ของแอป
-    A-->>U: หน้าสำเร็จและสัญญาณที่ไม่มี token
-    U->>A: GET / ในหน้าหลัก
+    C-->>U: ส่งแบบฟอร์มหลักฐานสำหรับ Keycloak
+    U->>K: ส่งหลักฐานยืนยันคำขอ
+    K-->>U: ส่งแบบฟอร์ม token เดิมและหลักฐานส่งต่อไป A/B
+    U->>A: ส่ง token และหลักฐานส่งต่อ
+    A->>A: ตรวจ token สิทธิ์ และบัญชี แล้วสร้าง session
+    A-->>U: แจ้งว่าเข้าสู่ระบบสำเร็จ
+    U->>A: เปิดหน้าหลัก
 ```
 
 [เปิดภาพ PNG: F04 sequence](images/f04-sequence.png)
 
 ```mermaid
 flowchart TD
-S[เริ่ม SSO แอปปลายทาง] --> P[ตรวจพร้อมและสร้าง state/challenge]
-    P --> C{session C ใช้ได้?}
-    C -->|มี| F[ลงลายเซ็น proof ไม่ถามรหัสผ่าน]
-    C -->|ไม่มี แบบกดเอง| L[ไป Login C ตาม F03]
-    C -->|ไม่มี แบบ silent| B[กลับ Login A/B ไม่แสดง modal ไม่มีสิทธิ์]
-    F --> K[Keycloak ส่ง token ใบเดิมและหลักฐาน handoff]
-    K --> A[A/B รับและตรวจ token]
-    A --> H[สร้าง session แอปปลายทาง]
+    S[เริ่ม Login SSO] --> P[ตรวจความพร้อมและเตรียมคำขอ]
+    P --> C{มี session C ที่ใช้งานได้?}
+    C -->|ไม่มี และผู้ใช้เลือก SSO| L[Login C ตาม F03]
+    C -->|ไม่มี ระหว่างตรวจเบื้องหลัง| B[แสดงหน้า Login A/B]
+    C -->|มี| T{token กลางยังใช้ได้?}
+    T -->|ไม่ได้| N[เริ่มขอ token ใหม่จาก C]
+    N --> R{เตรียม SSO สำเร็จ?}
+    R -->|ไม่สำเร็จ| E[แจ้งข้อผิดพลาดตาม F06]
+    R -->|สำเร็จ| F[ส่งหลักฐานไป Keycloak โดยไม่ถามรหัสผ่านซ้ำ]
+    T -->|ใช้ได้| F
+    F --> K[Keycloak ตรวจคำขอและส่ง token เดิมไป A/B]
+    K --> A{A/B ตรวจ token สิทธิ์ และบัญชีผ่าน?}
+    A -->|ไม่ผ่าน| D[ปฏิเสธตาม F05]
+    A -->|ผ่าน| H[สร้าง session และเปิดหน้าหลัก]
 ```
 
 [เปิดภาพ PNG: F04 flowchart](images/f04-flowchart.png)
 
-Browser **5 คำขอหลัก** และ script ส่งต่อ 3 เส้น กดลิงก์จาก C เพิ่ม `/connect/:system` อีก 1 ครั้ง ไม่รวม polling/status การไม่ถามรหัสผ่านซ้ำอาศัย session C ไม่ใช่ native Keycloak cookie ไม่มี token ร่วมใน localStorage
+หากเริ่มจากลิงก์ในหน้าหลัก C ระบบจะเปิดช่องทาง SSO ของ A/B ก่อนเข้าสู่กระบวนการเดียวกัน การเข้าแอปเพิ่มไม่ต่ออายุ token ใบเดิม หาก C เหลืออายุ token 3 นาที แอปที่เพิ่งเข้าก็ใช้ได้อีกไม่เกิน 3 นาทีเช่นกัน
 
-## F05 — ไม่มีสิทธิ์ ไม่มีบัญชี หรือข้อมูลไม่ถูกต้อง
+## F05 — ปฏิเสธการเข้าสู่ระบบ
 
-Modal ไม่มีสิทธิ์แสดงจากคำขอที่ผู้ใช้กด SSO เองเท่านั้น ไม่เด้งซ้ำหลัง reload หรือ silent check
+A/B อนุญาต SSO เมื่อ token ถูกต้อง มีสิทธิ์เข้าแอป และมีบัญชีที่ตรงกันในฐานข้อมูลของระบบ
 
 ```mermaid
 sequenceDiagram
     autonumber
-actor U as User / Browser
+    actor U as ผู้ใช้ / Browser
     participant C as ระบบ C
-    participant K as Keycloak + ส่วนขยาย
+    participant K as Keycloak
     participant A as ระบบ A หรือ B
-    U->>C: คำขอ SSO
-    alt ไม่มี read ใน C
-        C-->>U: Redirect callback error access_denied พร้อม state
-        U->>A: GET /sso/callback
-        A-->>U: Redirect Login และ modal ครั้งเดียว
-    else มีสิทธิ์
-        C-->>U: proof ในฟอร์ม
-        U->>K: POST proof
-        alt หลักฐานผิดหรือใช้ซ้ำ
-            K-->>U: ปฏิเสธในเฟรม
-            Note over U,A: หน้าส่งต่อ timeout กลับ Login พร้อม connection modal
-        else หลักฐานผ่าน
-            K-->>U: ฟอร์ม token ไป A/B
-            U->>A: POST /sso/callback
-            alt JWT หรือ binding ผิด
-                A-->>U: HTTP 400 ไม่สร้าง session
-            else ไม่มี read หรือไม่มี local account
-                A-->>U: Redirect Login พร้อม modal ตามเหตุผล
+    U->>C: ขอเข้าสู่ A/B ผ่าน SSO
+    alt ไม่มีสิทธิ์เข้าแอป
+        C-->>U: นำกลับ A/B พร้อมผลปฏิเสธ
+        U->>A: เปิดผลการเข้าสู่ระบบ
+        A-->>U: แสดงหน้า Login พร้อมแจ้งว่าไม่มีสิทธิ์
+    else มีสิทธิ์เข้าแอป
+        C-->>U: ส่งแบบฟอร์มหลักฐานสำหรับ Keycloak
+        U->>K: ส่งหลักฐานยืนยันคำขอ
+        alt หลักฐานไม่ถูกต้องหรือถูกใช้แล้ว
+            K-->>U: ปฏิเสธการส่งต่อ token
+            Note over U,A: เมื่อหมดเวลารอ กลับ Login A/B พร้อมแจ้งข้อผิดพลาด
+        else หลักฐานถูกต้อง
+            K-->>U: ส่งแบบฟอร์ม token ไป A/B
+            U->>A: ส่ง token และหลักฐานส่งต่อ
+            alt token หรือคำขอไม่ถูกต้อง
+                A-->>U: ปฏิเสธคำขอ ไม่สร้าง session
+            else ไม่มีสิทธิ์ หรือไม่มีบัญชีที่ตรงกัน
+                A-->>U: นำกลับ Login พร้อมแจ้งสาเหตุ
             end
         end
     end
@@ -246,98 +249,108 @@ actor U as User / Browser
 
 ```mermaid
 flowchart TD
-S[คำขอ SSO] --> C{C มี read?}
-    C -->|ไม่มี| D[access_denied กลับ Login A/B]
-    C -->|มี| K{Keycloak ตรวจ proof ผ่าน?}
-    K -->|ไม่| E[ปฏิเสธการส่งต่อ token]
-    K -->|ผ่าน| T[ส่ง token เข้า A/B]
-    T --> V{JWT และ binding ผ่าน?}
-    V -->|ไม่| B[400]
-    V -->|ผ่าน| A{มีสิทธิ์และ local account?}
-    A -->|ไม่| M[Login พร้อม modal ครั้งเดียว]
-    A -->|มี| H[สร้าง session แอป]
+    S[คำขอ Login SSO] --> C{มีสิทธิ์เข้าแอปที่ C?}
+    C -->|ไม่มี| D[กลับ Login A/B และแจ้งว่าไม่มีสิทธิ์]
+    C -->|มี| K{Keycloak ตรวจหลักฐานผ่าน?}
+    K -->|ไม่ผ่าน| E[ปฏิเสธการส่งต่อ token]
+    K -->|ผ่าน| T[ส่ง token ผ่าน Browser ไป A/B]
+    T --> V{token และคำขอถูกต้อง?}
+    V -->|ไม่ถูกต้อง| B[ปฏิเสธคำขอ]
+    V -->|ถูกต้อง| A{มีสิทธิ์และบัญชีในระบบ?}
+    A -->|ไม่มี| M[กลับ Login พร้อมแจ้งสาเหตุ]
+    A -->|มี| H[สร้าง session ของระบบ]
 ```
 
 [เปิดภาพ PNG: F05 flowchart](images/f05-flowchart.png)
 
-C ไม่ให้ read จึงไม่ส่ง proof ไปขอส่งต่อ token; A/B ตรวจซ้ำจาก JWT ก่อนสร้าง session ไม่มีบัญชีใน A/B จะไม่สร้างให้อัตโนมัติ หากข้อมูลปลอมถูกปฏิเสธในเฟรม หน้าส่งต่อจะแสดง connection error แบบทั่วไปหลัง timeout ไม่เปิดเผยรายละเอียดตรวจลายเซ็นให้ผู้ใช้
+ข้อความไม่มีสิทธิ์หรือไม่มีบัญชีที่ตรงกันแสดงเป็น modal ครั้งเดียวจากการเลือก SSO ของผู้ใช้ การตรวจ SSO เบื้องหลังและการโหลดหน้าใหม่ไม่ทำให้ modal ไม่มีสิทธิ์เด้งซ้ำ ระบบไม่สร้างบัญชี A/B ให้อัตโนมัติ
 
-## F06 — Keycloak ติดต่อไม่ได้หรือออก token ไม่ได้
+คำขอที่ถูกปลอมหรือใช้ซ้ำอาจได้รับการปฏิเสธโดยตรง แทนการแสดง modal หากถูกปฏิเสธในเฟรม หน้าส่งต่อกลับ Login เมื่อหมดเวลารอ โดยไม่เปิดเผยรายละเอียดการตรวจหลักฐาน
 
-รองรับทั้งล่มก่อนเริ่ม SSO และล่มหลัง preflight ผ่าน ไม่ปล่อยหน้าหลัก browser ไปค้างที่หน้า Keycloak
+## F06 — เตรียม SSO หรือส่งต่อ token ไม่สำเร็จ
+
+การขัดข้องของ Keycloak แสดงผลที่หน้าแอป ผู้ใช้ยังเลือก Login ด้วยบัญชีของ A/B ได้
 
 ```mermaid
 sequenceDiagram
     autonumber
-actor U as User / Browser
+    actor U as ผู้ใช้ / Browser
     participant A as ระบบ A หรือ B
     participant C as ระบบ C
-    participant K as Keycloak + ส่วนขยาย
-    U->>A: POST /sso/preflight
-    loop สูงสุด 3 ครั้งเฉพาะ error ที่ retry ได้
-        A->>K: GET /temporary-sso-poc/status
-        K--xA: timeout หรือ server error
+    participant K as Keycloak
+    alt ติดต่อ Keycloak ไม่ได้ก่อนเริ่ม SSO
+        U->>A: เลือก Login SSO
+        loop ตรวจความพร้อมสูงสุด 3 ครั้ง
+            A->>K: ตรวจความพร้อม
+            K--xA: ติดต่อไม่ได้หรือบริการขัดข้อง
+        end
+        A-->>U: แสดงข้อผิดพลาดที่หน้า Login
+    else Keycloak ขัดข้องหลังเตรียม token แล้ว
+        U->>C: ดำเนินการ SSO ที่ตรวจความพร้อมผ่านแล้ว
+        C-->>U: ส่งแบบฟอร์มหลักฐานและเริ่มจับเวลารอ
+        U->>K: ส่งหลักฐานยืนยันคำขอ
+        K--xU: ส่งต่อ token ไม่สำเร็จ
+        U->>A: กลับเมื่อรอครบ 12 วินาที
+        A-->>U: แสดงหน้า Login พร้อมแจ้งข้อผิดพลาด
     end
-    A-->>U: 503 และจำนวน attempts
-    U->>U: แสดง modal คงหน้า Login
-    Note over U,K: อีกกรณี ตรวจพร้อมผ่านแล้วแต่ล่มระหว่างส่งต่อ
-    U->>C: ยืนยันตัวตนและรับหน้าส่งต่อ
-    C-->>U: ฟอร์ม proof และ timeout 12 วินาที
-    U->>K: POST proof ในเฟรม
-    K--xU: ติดต่อไม่ได้หรือออก token ไม่สำเร็จ
-    U->>A: GET error callback หลัง timeout
-    A-->>U: กลับ Login พร้อม connection modal
 ```
 
 [เปิดภาพ PNG: F06 sequence](images/f06-sequence.png)
 
 ```mermaid
 flowchart TD
-S[กด SSO] --> P{Keycloak พร้อม?}
-    P -->|ไม่| R[retry สูงสุด 3 ครั้ง]
-    R -->|ยังไม่ผ่าน| E[คง Login แสดง modal]
-    P -->|ผ่าน| C[ไป C และส่ง proof ในเฟรม]
-    C --> T{callback สำเร็จใน 12 วินาที?}
-    T -->|ใช่| H[เข้า A/B]
-    T -->|ไม่| F[กลับ error callback A/B]
-    F --> E
+    S[เลือก Login SSO] --> P{ตรวจความพร้อมสำเร็จ?}
+    P -->|ไม่สำเร็จ| R[ลองใหม่สูงสุด 3 ครั้ง]
+    R -->|ยังไม่สำเร็จ| E[คงหน้า Login และแจ้งข้อผิดพลาด]
+    R -->|สำเร็จ| C[ยืนยันตัวตนและเตรียม SSO ที่ C]
+    P -->|สำเร็จ| C
+    C --> Q{ขอ token กลางสำเร็จ?}
+    Q -->|ไม่สำเร็จ| E
+    Q -->|สำเร็จ| F[ส่งต่อ token ผ่าน Browser ไป A/B]
+    F --> T{เข้าสู่ A/B สำเร็จภายในเวลารอ?}
+    T -->|สำเร็จ| H[เปิดหน้าหลัก]
+    T -->|ไม่สำเร็จ| E
 ```
 
 [เปิดภาพ PNG: F06 flowchart](images/f06-flowchart.png)
 
-Retry ตรวจพร้อมเว้น 2 และ 5 วินาที แต่ละคำขอ timeout 3 วินาที Silent check ตรวจเพียง 1 ครั้ง HTTP 4xx ที่ไม่ใช่ 429 หรือ issuer ผิดหยุดทันที ไม่ retry การส่ง proof โดยอัตโนมัติ ผู้ใช้เริ่มใหม่เพื่อรับ state/proof ใหม่ Login local ยังใช้ได้ หาก Login C โดยตรงแล้วเชื่อมต่อไม่ได้ C session คงอยู่และมีสถานะแจ้งบน dashboard
+| จุดที่ขัดข้อง                   | การจัดการ                                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------ |
+| A/B ตรวจความพร้อมไม่ได้         | ลองสูงสุด 3 ครั้ง แล้วแสดง modal ที่หน้า Login; การตรวจเบื้องหลังลอง 1 ครั้ง                     |
+| C ขอ token ไม่สำเร็จ            | ลองสูงสุด 3 ครั้งเมื่อเป็นปัญหาชั่วคราว แจ้งว่าเตรียม SSO ไม่สำเร็จ แต่ session C ยังคงใช้งานได้ |
+| ส่งต่อ token หรือรับผลไม่สำเร็จ | รอไม่เกิน 12 วินาที แล้วกลับ Login A/B พร้อม modal                                               |
 
-Login C โดยตรงใช้ POST bootstrap สูงสุด 3 ครั้งเพื่อออก token จริง ไม่ใช้ GET status มาตัดสินว่าสำเร็จ หากออกไม่ได้ C local session ยังใช้ได้ แต่ tokenIssued เป็น false และมี modal แจ้ง failed
+การตรวจความพร้อมและการขอ token แต่ละครั้งรอการตอบกลับไม่เกิน 3 วินาที เว้นก่อนลองครั้งที่ 2 และ 3 เป็น 2 และ 5 วินาที ข้อผิดพลาดจาก credentials หรือข้อมูลหลักฐานจะหยุดให้แก้การตั้งค่า ไม่ส่งหลักฐานเดิมซ้ำโดยอัตโนมัติ
 
-## F07 — Heartbeat ตรวจ expiry หรือ revoke
+## F07 — ตรวจ Session และอายุ token
 
-Browser ตั้งรอบ 1 ชั่วโมง Protected requests ตรวจ JWT expiry ด้วย เมื่อพบ inactive จะล้าง session และกลับหน้า Login
+A/B ตรวจอายุ token เมื่อมีคำขอใช้งาน และ Browser ที่เปิดหน้า SSO อยู่จะตรวจ session ทุก 1 ชั่วโมง หาก token ยังไม่หมดอายุ การตรวจ heartbeat จะสอบถามสถานะ token กับ Keycloak เพิ่มเติม
 
 ```mermaid
 sequenceDiagram
     autonumber
-actor U as User / Browser
+    actor U as ผู้ใช้ / Browser
     participant A as ระบบ A หรือ B
-    participant K as Keycloak + ส่วนขยาย
-    U->>A: GET /session/heartbeat ทุก 1 ชั่วโมง
-    A->>A: ตรวจ JWT กลางและ app token รวม exp
-    alt หมดอายุหรือ token ไม่ถูกต้อง
+    participant K as Keycloak
+    U->>A: ตรวจ session ตามรอบ 1 ชั่วโมง
+    A->>A: ตรวจ token กลางและ session ของระบบ
+    alt หมดอายุหรือไม่ถูกต้อง
         A->>A: ล้าง session
-        A-->>U: 401 พร้อม loginUrl
-        U->>A: GET /login
+        A-->>U: แจ้งว่าสิ้นสุดการเข้าสู่ระบบ
+        U->>A: เปิดหน้า Login
     else token ยังไม่หมดอายุ
-        A->>K: POST /temporary-sso-poc/introspect พร้อม client auth
-        alt active
-            K-->>A: active true
-            A-->>U: 200 ใช้งานต่อ
-        else inactive
-            K-->>A: active false
-            A->>A: ล้าง SSO session
-            A-->>U: 401
-            U->>A: GET /login
+        A->>K: ตรวจว่า token ยังใช้งานได้หรือไม่
+        alt ยังใช้งานได้
+            K-->>A: token ยังใช้งานได้
+            A-->>U: ใช้งานต่อได้
+        else token ถูกยกเลิกหรือไม่พบสถานะ
+            K-->>A: token ใช้งานไม่ได้
+            A->>A: ล้าง session SSO
+            A-->>U: ให้เข้าสู่ระบบใหม่
+            U->>A: เปิดหน้า Login
         else ติดต่อไม่ได้
-            K--xA: timeout / error
-            A-->>U: 503 ยังไม่สรุปว่า revoke
+            K--xA: ตรวจสถานะไม่ได้
+            A-->>U: แจ้งว่าตรวจสอบไม่ได้ในขณะนี้
         end
     end
 ```
@@ -346,137 +359,209 @@ actor U as User / Browser
 
 ```mermaid
 flowchart TD
-H[ครบ 1 ชั่วโมงหรือคำขอที่ต้องตรวจ] --> V{JWT และ exp ผ่าน?}
-    V -->|ไม่| L[ล้าง session และกลับ Login]
-    V -->|ผ่าน| I[Introspect กับส่วนขยาย]
+    H[ถึงรอบตรวจ session หรือมีคำขอที่ต้องตรวจ] --> V{token ถูกต้องและยังไม่หมดอายุ?}
+    V -->|ไม่ผ่าน| L[ล้าง session และกลับ Login]
+    V -->|ผ่าน| C{ถึงเงื่อนไขตรวจสถานะกับ Keycloak?}
+    C -->|ยังไม่ถึง| S[ใช้งานต่อได้]
+    C -->|ถึงแล้ว| I[สอบถามสถานะ token ที่ Keycloak]
     I --> R{ผลตรวจ}
-    R -->|active| S[ใช้ต่อ]
-    R -->|inactive| L
-    R -->|ติดต่อไม่ได้| W[503 รอตรวจใหม่]
+    R -->|ยังใช้งานได้| S
+    R -->|ใช้งานไม่ได้| L
+    R -->|ตรวจสอบไม่ได้| W[แจ้งข้อผิดพลาดและรอตรวจใหม่]
 ```
 
 [เปิดภาพ PNG: F07 flowchart](images/f07-flowchart.png)
 
-Browser heartbeat 1 request; Keycloak introspection **0–1** ตามว่า token ยังผ่าน exp หรือไม่ Protected requests ตรวจ introspection เมื่อเกินรอบ 1 ชั่วโมง ส่วน local sessions ไม่ขึ้นกับ Keycloak การทดสอบเร่ง timer จากภายนอกและตั้ง token 3 วินาทีชั่วคราว ไม่เปลี่ยนรอบจริงของ source และคืนอายุ 15 นาทีเมื่อจบ หากไม่เปิดหน้าใช้งาน token หมดอายุอาจรอถึง heartbeat ถัดไปจึงเปลี่ยนหน้า
+ถ้า token หมดอายุแล้ว A/B ล้าง session โดยไม่เรียก Keycloak หากติดต่อ Keycloak ไม่ได้จะยังไม่ถือว่า token ถูกยกเลิก และไม่อนุญาตคำขอที่ต้องตรวจสถานะให้ผ่านจนกว่าจะตรวจสำเร็จ
 
-## F08 — Logout A/B เฉพาะระบบ
+อายุ token ปกติ 15 นาที ส่วน heartbeat ทุก 1 ชั่วโมง หากเปิดหน้าค้างโดยไม่ส่งคำขอ หน้าเดิมอาจยังแสดงอยู่จนตรวจครั้งถัดไป คำขอใช้งานหลังหมดอายุจะถูกปฏิเสธ ดู [การตั้งอายุ token และรอบตรวจ](../keycloak/SETUP-GUIDE.md#อายุ-token-กับ-heartbeat-เป็นคนละค่า)
 
-Logout นี้ไม่ revoke token กลางหรือ Logout C และอีกแอป
+## F08 — Logout A/B
+
+ผู้ใช้ออกจากระบบที่เปิดอยู่ โดย session C, token กลาง และ session ของแอปอื่นยังคงเป็นไปตามอายุและสถานะเดิม
 
 ```mermaid
 sequenceDiagram
     autonumber
-actor U as User / Browser
+    actor U as ผู้ใช้ / Browser
     participant A as ระบบ A หรือ B
-    U->>A: POST /logout พร้อม CSRF
-    A->>A: ล้าง session และ cookie ของระบบนี้
-    A-->>U: Redirect /login/local
-    U->>A: GET /login/local
-    A-->>U: Redirect /login
-    U->>A: GET /login
-    A-->>U: หน้า Login ไม่เริ่ม silent SSO ซ้ำ
+    U->>A: เลือก Logout
+    A->>A: ตรวจคำขอและล้าง session ของระบบนี้
+    A-->>U: นำกลับหน้า Login
+    U->>A: เปิดหน้า Login
+    A-->>U: รอผู้ใช้เลือกช่องทางเข้าสู่ระบบ
 ```
 
 [เปิดภาพ PNG: F08 sequence](images/f08-sequence.png)
 
 ```mermaid
 flowchart TD
-L[Logout A/B] --> C{CSRF ผ่าน?}
-    C -->|ไม่| E[403]
-    C -->|ผ่าน| D[ล้าง session และ cookie ของระบบนี้]
-    D --> H[หน้า Login รอผู้ใช้เลือกช่องทาง]
+    L[Logout A/B] --> C{คำขอถูกต้อง?}
+    C -->|ไม่ถูกต้อง| E[ปฏิเสธคำขอ]
+    C -->|ถูกต้อง| D[ล้าง session และ cookie ของระบบนี้]
+    D --> H[แสดงหน้า Login]
 ```
 
 [เปิดภาพ PNG: F08 flowchart](images/f08-flowchart.png)
 
-Browser 3 requests ตามภาพ Keycloak **0** หากผู้ใช้กด SSO ใหม่และ C session ยังอยู่จะเข้าได้โดยไม่ถามรหัสผ่าน API revoke รายใบมีให้ทดสอบแยก แต่ไม่ได้ผูกกับปุ่ม Logout นี้
+หลัง Logout ไม่เริ่ม SSO ซ้ำอัตโนมัติ หากผู้ใช้เลือก SSO ใหม่และ session C ยังใช้ได้ จะเข้าสู่ระบบได้ตามสิทธิ์โดยไม่ต้องกรอกรหัสผ่านซ้ำ
 
-## F09 — Logout C ยกเลิก token กลางและบังคับ SSO A/B ออก
+## F09 — Logout C และยกเลิก SSO
 
-C ลงลายเซ็น logout proof โดยไม่ถือ token กลางของ A/B แล้วส่ง notification ให้แอปหลัง Keycloak ยกเลิกสถานะ
+เมื่อผู้ใช้ Logout C ระบบยกเลิก token กลางของผู้ใช้นั้น และแจ้ง A/B ให้ล้าง session ที่เข้าสู่ระบบผ่าน SSO การ Login ด้วยบัญชีของ A/B เองยังคงใช้งานได้
 
 ```mermaid
 sequenceDiagram
     autonumber
-actor U as Browser C
+    actor U as ผู้ใช้ / Browser C
     participant C as ระบบ C
-    participant K as Keycloak + ส่วนขยาย
+    participant K as Keycloak
     participant A as ระบบ A/B
-    actor B as Browser A/B
-    U->>C: POST /logout พร้อม CSRF
-    C->>C: ปิด C session ต้นทางและสร้าง signed logout proof
-    C->>K: POST /temporary-sso-poc/logout-user
-    K->>K: ตรวจ proof ลบตัวตน/token cache และตั้ง cutoff ชั่วคราว
-    K-->>C: สำเร็จ
-    loop app-a และ app-b
-        C->>A: POST /logout/control พร้อม signed notification
-        A->>A: ตรวจลายเซ็น บันทึก cutoff และล้าง SSO sessions
-        A-->>B: SSE logout บน connection เดิม
+    participant B as แท็บ A/B
+    U->>C: เลือก Logout
+    C->>C: ปิดการใช้ session ต้นทางเพื่อเริ่ม SSO เพิ่ม
+    C->>K: ขอเพิกถอน token ของผู้ใช้ พร้อมหลักฐานจาก C
+    K->>K: ตรวจหลักฐานและยกเลิก token ของผู้ใช้
+    K-->>C: ยืนยันการยกเลิก
+    loop แจ้งระบบ A และ B
+        C->>A: แจ้งยกเลิก SSO ของผู้ใช้
+        A->>A: ตรวจผู้ส่งและล้าง session SSO
+        A-->>B: แจ้งให้กลับหน้า Login
         B->>A: เปิดหน้า Login
-        A-->>C: HTTP 200
+        A-->>C: ยืนยันว่ารับการแจ้งแล้ว
     end
-    C->>C: ล้าง session C
-    C-->>U: Redirect /login
+    C->>C: ล้าง session C ของคำขอปัจจุบัน
+    C-->>U: นำกลับหน้า Login C
+    U->>C: เปิดหน้า Login C
 ```
 
 [เปิดภาพ PNG: F09 sequence](images/f09-sequence.png)
 
 ```mermaid
 flowchart TD
-L[Logout C] --> P[ปิดต้นทางและลงลายเซ็น proof]
-    P --> K[Keycloak ลบสถานะ token ของ user]
-    K --> N[แจ้ง A และ B ด้วย signed notification]
-    N --> R{ทุกขั้นตอนสำเร็จ?}
-    R -->|สำเร็จ| C[ล้าง session C แล้วกลับ Login]
-    R -->|ไม่| E[503 คง C session ให้ retry]
+    L[Logout C] --> P[ปิดคำขอ SSO จาก session ต้นทาง]
+    P --> K[ให้ Keycloak ยกเลิก token ของผู้ใช้]
+    K --> V{ยกเลิกสำเร็จ?}
+    V -->|ไม่สำเร็จ| E[แจ้งว่าดำเนินการไม่ครบ และให้ลองใหม่]
+    V -->|สำเร็จ| N[แจ้ง A/B ให้ล้าง session SSO]
+    N --> R{แจ้งครบทุกระบบ?}
+    R -->|ครบ| C[ล้าง session C และกลับ Login]
+    R -->|ไม่ครบ| E
 ```
 
 [เปิดภาพ PNG: F09 flowchart](images/f09-flowchart.png)
 
-Backend **C→Keycloak 1 + C→A/B 2 requests** ไม่วน revoke ทีละใบ และไม่ใช้ native End Session หรือ native back-channel logout A/B ล้างเฉพาะ SSO sessions ส่วน local sessions คงอยู่ SSE เป็นข้อมูลใน connection เดิมไม่ใช่ request ใหม่ ไม่มีการ rollback การ revoke ที่สำเร็จแล้วหาก notification ถัดไปล้มเหลว จึงอาจเกิด logout บางส่วนและต้อง retry
+การยกเลิกครอบคลุม token กลางของผู้ใช้นั้นทุก session C ส่วน session Login C ที่ถูกล้างคือ session ของคำขอ Logout ปัจจุบัน การแจ้งแท็บ A/B ใช้การเชื่อมต่อ SSE ที่เปิดอยู่
 
-การ revoke นี้รวม token กลางของ C และ token ของ A/B ด้วย C ล้าง access_token ของตัวเองจาก central_sso_status และไม่รับ token A/B มาส่งต่อ
+หากขั้นตอนใดไม่สำเร็จ C แจ้งให้ลองใหม่ การเพิกถอนที่สำเร็จแล้วไม่ถูกย้อนกลับ จึงอาจมีบางระบบออกก่อนระบบอื่น และต้องลองอีกครั้งเพื่อดำเนินการให้ครบ
 
 ## F10 — จัดการบัญชีและสิทธิ์ที่ C
 
-หน้า user management ใช้งานกับฐานข้อมูล C จริง ไม่มี sync button หรือการสร้าง Keycloak user/roles
+ผู้ดูแลจัดการบัญชีและสิทธิ์ read/write/delete ของแต่ละแอปที่ C การแก้ผู้ใช้เดิมจะยกเลิก SSO เดิม เพื่อให้การเข้าสู่ระบบครั้งถัดไปใช้ข้อมูลล่าสุด
 
 ```mermaid
 sequenceDiagram
     autonumber
-actor U as ผู้ดูแล / Browser
+    actor U as ผู้ดูแล / Browser
     participant C as ระบบ C
-    participant D as PostgreSQL C
-    participant K as Keycloak + ส่วนขยาย
+    participant D as ฐานข้อมูล C
+    participant K as Keycloak
     participant A as ระบบ A/B
-    U->>C: POST /users หรือ /users/{id}
-    C->>C: ตรวจ admin และ CSRF
-    C->>D: บันทึกบัญชี/สิทธิ์และ audit
-    D-->>C: สำเร็จ
-    opt แก้สิทธิ์ ปิดบัญชี เปลี่ยนรหัสผ่าน หรือลบผู้ใช้เดิม
-        C->>K: POST /temporary-sso-poc/logout-user พร้อม signed proof
-        K-->>C: ยกเลิก token เดิม
-        C->>A: signed notification ล้าง SSO sessions
+    U->>C: ส่งข้อมูลบัญชีและสิทธิ์
+    C->>C: ตรวจสิทธิ์ผู้ดูแลและความถูกต้องของข้อมูล
+    C->>D: บันทึกข้อมูลและประวัติการจัดการ
+    D-->>C: บันทึกสำเร็จ
+    opt แก้ไขหรือยกเลิกบัญชีเดิม
+        C->>K: ขอเพิกถอน token ของผู้ใช้
+        K-->>C: ยืนยันการยกเลิก
+        C->>A: แจ้งให้ล้าง session SSO ของผู้ใช้
+        A-->>C: ยืนยันว่ารับการแจ้งแล้ว
     end
-    C-->>U: Redirect /users?saved=1
-    Note over C,K: SSO ครั้งใหม่อ่านสิทธิ์ล่าสุดเพื่อสร้าง proof ไม่ sync ผู้ใช้/roles
+    C-->>U: แสดงผลการบันทึก
 ```
 
 [เปิดภาพ PNG: F10 sequence](images/f10-sequence.png)
 
 ```mermaid
 flowchart TD
-S[บันทึกบัญชีและสิทธิ์ใน C] --> V{admin CSRF และข้อมูลผ่าน?}
-    V -->|ไม่| E[ปฏิเสธ]
-    V -->|ผ่าน| D[บันทึก PostgreSQL C]
-    D --> T{เป็นการแก้ผู้ใช้เดิมหรือไม่?}
-    T -->|สร้างใหม่| H[สำเร็จ ไม่เรียก Keycloak]
-    T -->|แก้หรือปิดหรือลบ| K[revoke ผู้ใช้และแจ้ง Logout A/B]
-    K -->|ผ่าน| H
-    K -->|ไม่ผ่าน| F[แจ้งดำเนินการไม่สำเร็จ ต้อง retry]
-    H --> N[SSO ใหม่ได้รับสิทธิ์ล่าสุด]
+    S[จัดการบัญชีและสิทธิ์ที่ C] --> V{มีสิทธิ์ผู้ดูแลและข้อมูลถูกต้อง?}
+    V -->|ไม่ผ่าน| E[ปฏิเสธคำขอ]
+    V -->|ผ่าน| D[บันทึกบัญชีหรือสถานะและสิทธิ์]
+    D --> T{เป็นผู้ใช้เดิมหรือไม่?}
+    T -->|สร้างผู้ใช้ใหม่| H[แจ้งผลสำเร็จ]
+    T -->|ผู้ใช้เดิม| K[ยกเลิก token และแจ้ง Logout SSO ที่ A/B]
+    K --> R{ดำเนินการครบ?}
+    R -->|ครบ| H
+    R -->|ไม่ครบ| F[แจ้งว่าดำเนินการไม่ครบ และให้ลองใหม่]
+    H --> N[Login SSO ครั้งถัดไปใช้ข้อมูลล่าสุด]
 ```
 
 [เปิดภาพ PNG: F10 flowchart](images/f10-flowchart.png)
 
-สร้างผู้ใช้ใหม่ **Keycloak 0 requests** แก้ผู้ใช้เดิมใช้ logout-user 1 และ notification 2 ไม่ใช่ sync ผู้ใช้ Token payload ที่ออกแล้วเปลี่ยนไม่ได้จึง revoke และให้เริ่ม SSO ใหม่ หาก network revoke ล้มเหลว ข้อมูลที่บันทึกใน C ไม่ rollback ต้อง retry เพื่อยกเลิก token เดิมให้ครบ การปิด/ลบ/เปลี่ยนรหัสผ่านมีในโค้ด; integration suite ทดสอบหน้าเพิ่มผู้ใช้และแก้สิทธิ์ ไม่ได้ทดสอบทุกกรณีของการลบบัญชี
+ข้อมูลบัญชีและรหัสผ่านเก็บใน C ระบบไม่สร้าง user หรือ role mapping ของผู้ใช้ใน Keycloak สิทธิ์ที่ออกไปกับ token แล้วเปลี่ยนย้อนหลังไม่ได้ จึงต้องยกเลิก token เดิม หากการยกเลิกหรือแจ้งแอปล้มเหลว ข้อมูลที่บันทึกใน C ไม่ถูกย้อนกลับ
+
+## F11 — ตรวจความพร้อม C และออกจาก SSO เมื่อ C ขัดข้อง
+
+Keycloak ตรวจความพร้อมของ C ตามรอบที่กำหนด เมื่อไม่ผ่านติดต่อกันครบเกณฑ์ จะยกเลิก token กลางและแจ้งแอปโดยตรง กระบวนการนี้ทำงานได้แม้ไม่มีผู้ใช้เปิด Browser
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant K as Keycloak
+    participant C as ระบบ C
+    participant A as ระบบ A/B
+    participant B as แท็บ A/B
+    loop ตามรอบตรวจที่กำหนด
+        K->>C: ตรวจความพร้อมของบริการ
+        alt C พร้อมใช้งาน
+            C-->>K: พร้อมใช้งาน
+            K->>K: ล้างจำนวนครั้งที่ตรวจไม่ผ่าน
+        else C ไม่พร้อมใช้งาน
+            C--xK: ติดต่อไม่ได้หรือตอบข้อผิดพลาด
+            K->>K: นับจำนวนครั้งที่ไม่ผ่านติดต่อกัน
+            opt ครบเกณฑ์ที่กำหนด
+                K->>K: ระงับ SSO และยกเลิก token กลาง
+                K->>K: บันทึกเวลาเกิดเหตุครั้งแรกและระบบที่ต้องแจ้ง
+            end
+        end
+        opt มีระบบที่ยังไม่ได้รับการแจ้ง
+            K->>A: แจ้งยกเลิก session SSO ก่อนเวลาเกิดเหตุ
+            A->>A: ตรวจผู้ส่งและล้าง session ที่เกี่ยวข้อง
+            A-->>B: แจ้งให้กลับหน้า Login
+            B->>A: เปิดหน้า Login
+            K->>C: แจ้งให้ล้างสถานะ token กลางเก่า
+            Note over K,C: ระบบที่ติดต่อไม่ได้จะได้รับการแจ้งซ้ำในรอบถัดไป
+        end
+        K->>K: ถ้า C พร้อมใช้งานแล้ว เปิดรับ SSO ใหม่
+    end
+```
+
+[เปิดภาพ PNG: F11 sequence](images/f11-sequence.png)
+
+```mermaid
+flowchart TD
+    T[ถึงรอบตรวจบริการ C] --> H{C พร้อมใช้งาน?}
+    H -->|พร้อม| U[ล้างจำนวนครั้งที่ตรวจไม่ผ่าน]
+    H -->|ไม่พร้อม| F[เพิ่มจำนวนครั้งที่ตรวจไม่ผ่าน]
+    F --> N{ครบเกณฑ์ที่กำหนด?}
+    N -->|ยังไม่ครบ| P{มีระบบที่ยังต้องแจ้ง?}
+    N -->|ครบ| D[ระงับ SSO และยกเลิก token กลาง]
+    D --> P
+    U --> P
+    P -->|มี| L[แจ้ง A/B และ C ให้ล้างสถานะ SSO เก่า]
+    L --> E[เก็บปลายทางที่ติดต่อไม่ได้ไว้ลองรอบถัดไป]
+    E --> G{C พร้อมใช้งานแล้ว?}
+    P -->|ไม่มี| G
+    G -->|พร้อม| O[เปิดรับ SSO ใหม่]
+    G -->|ไม่พร้อม| W[รอรอบตรวจถัดไป]
+    O --> W
+    W --> T
+```
+
+[เปิดภาพ PNG: F11 flowchart](images/f11-flowchart.png)
+
+ตั้งรอบตรวจและจำนวนครั้งที่ไม่ผ่านได้ที่ **Realm settings → Sessions → Logout** เมื่อ C กลับมา token ที่ถูกยกเลิกจะไม่กลับมาใช้ได้ ผู้ใช้ต้องเริ่ม SSO ใหม่ การแจ้งซ้ำยึดเวลาเกิดเหตุเดิม เพื่อไม่ล้าง session ใหม่ที่สร้างภายหลัง
+
+การ Login ด้วยบัญชีของ A/B เองและ session Login C ยังคงแยกจาก SSO หาก A/B พลาดการแจ้ง จะตรวจพบ token ใช้งานไม่ได้จาก heartbeat ของตัวเองตาม F07 การตรวจบริการ C นี้ไม่ใช่การตรวจ session ผู้ใช้รายคนที่ C
+
+ดู [วิธีตั้งค่า](../keycloak/SETUP-GUIDE.md) และ [ผลทดสอบ](../keycloak/IDP-HEARTBEAT-TEST-RESULTS.json)

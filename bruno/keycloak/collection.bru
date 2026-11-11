@@ -1,0 +1,14 @@
+script:pre-request {
+  if (bru.isSafeMode()) {
+    throw new Error("เลือก Developer Mode ของ collection เพื่ออ่าน config ในโครงการและลงลายเซ็น proof จาก C");
+  }
+  const { prepareRequest } = require(bru.cwd() + "/scripts/prepare-request.js");
+  prepareRequest(bru, req);
+}
+
+docs {
+  เฉพาะ Keycloak runtime API ของ PoC รวม 7 requests ไม่มี API ของ A/B/C หรือ Admin CRUD
+  เปิด environment Local และ Developer Mode แล้วรันตามลำดับ
+  อ่าน secrets จาก .env และ private key ของ C ในโครงการตอนส่ง ไม่บันทึกลง environment
+  Bootstrap เป็นการจำลอง backend C ด้วยตัวตนทดสอบเฉพาะ collection ไม่ได้ Login browser
+}

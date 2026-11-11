@@ -10,3 +10,11 @@ secrets/*
 *.pyc
 *.log
 .DS_Store
+
+scripts/.inspect-ui-*/
+
+scripts/.diagram-profile-*/
+
+scripts/.sso-jwks-*/
+
+scripts/.test-artifacts/

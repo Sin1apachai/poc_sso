@@ -24,6 +24,8 @@ public final class RealmSsoConfiguration {
     }
 
     public String getIssuer() {
+        String configuredIssuer = realm.getAttribute(ATTRIBUTE_PREFIX + "issuer");
+        if (configuredIssuer != null && !configuredIssuer.isBlank()) return configuredIssuer;
         return Urls.realmIssuer(session.getContext().getUri().getBaseUri(), realm.getName());
     }
 

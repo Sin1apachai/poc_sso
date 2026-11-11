@@ -1,0 +1,33 @@
+meta {
+  name: 05 Introspect
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{keycloak_url}}/realms/{{realm}}/temporary-sso-poc/introspect
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  token: {{request_access_token}}
+  client_id: {{caller_client_id}}
+  client_secret: {{caller_client_secret}}
+}
+
+tests {
+  test("Keycloak reports token activity", () => {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().active).to.be.a("boolean");
+    if (!bru.getEnvVar("access_token") && typeof bru.getVar("expected_active") === "boolean") {
+      expect(res.getBody().active).to.equal(bru.getVar("expected_active"));
+    }
+  });
+}
+
+docs {
+  app=a ใช้ client A; app=b ใช้ client B อ่าน secret จาก .env
+  ใช้ token จาก 03 หรือใส่ token จริงใน access_token ของ environment
+  ใช้ custom introspection ไม่ใช่ native /protocol/openid-connect/token/introspect
+}

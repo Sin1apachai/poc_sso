@@ -11,6 +11,9 @@ async function initializeDatabase() {
   await pool.query(`CREATE TABLE IF NOT EXISTS sso_logout_fences (
     kc_sub TEXT PRIMARY KEY,revoked_before BIGINT NOT NULL
   )`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS sso_idp_logout_fences (
+    idp TEXT PRIMARY KEY,revoked_before BIGINT NOT NULL
+  )`);
   await pool.query(`CREATE TABLE IF NOT EXISTS logout_receipts (
     jti TEXT PRIMARY KEY, received_at TIMESTAMPTZ NOT NULL DEFAULT now()
   )`);

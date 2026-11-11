@@ -1,0 +1,34 @@
+meta {
+  name: 07 Logout User
+  type: http
+  seq: 7
+}
+
+post {
+  url: {{keycloak_url}}/realms/{{realm}}/temporary-sso-poc/logout-user
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  assertion: {{assertion}}
+}
+
+script:post-response {
+  if (res.getStatus() === 200) bru.setVar("expected_active", false);
+}
+
+tests {
+  test("Signed C logout revokes the fixture identity", () => {
+    expect(res.getStatus()).to.equal(200);
+    expect(res.getBody().revoked).to.be.a("number");
+    expect(res.getBody().revoked).to.be.at.least(bru.getVar("expected_logout_minimum") || 0);
+  });
+}
+
+docs {
+  Logout เฉพาะตัวตน bruno-UUID จาก 03 ไม่ใช่บัญชี admin หรือผู้ใช้จริง
+  ทดสอบมี token ให้รัน 03 → 07 → 05 จะได้ active=false
+  ถ้าส่ง 06 ก่อนแล้ว revoked อาจเป็น 0 เพราะยกเลิก token ไปแล้ว
+  เส้นนี้ทำส่วน Keycloak เท่านั้น ปุ่ม Logout ของ C จริงยังแจ้ง A/B อีกขั้น
+}

@@ -1,6 +1,7 @@
 package lab.sso.repository;
 
 import jakarta.ws.rs.BadRequestException;
+import jakarta.ws.rs.ServiceUnavailableException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -115,7 +116,42 @@ public final class TemporaryTokenRepository {
         return tokens;
     }
 
+    public void requireIdentityProviderAvailable() {
+        Map<String, String> health = session.singleUseObjects().get(cacheKey("idp-health", "current"));
+        if (health != null && "down".equals(health.get("status"))) {
+            throw new ServiceUnavailableException("Identity provider unavailable");
+        }
+    }
+
+    public void markIdentityProviderUnavailable(long cutoffMillis) {
+        synchronized (TemporaryTokenRepository.class) {
+            session.singleUseObjects().put(cacheKey("idp-health", "current"), 604800,
+                    Map.of("status", "down", "cutoff", Long.toString(cutoffMillis)));
+            Map<String, String> catalog = session.singleUseObjects().remove(cacheKey("catalog", "active"));
+            if (catalog != null) {
+                for (String tokenId : catalog.getOrDefault("tokens", "").split(",")) {
+                    if (!tokenId.isBlank()) session.singleUseObjects().remove(cacheKey("token", tokenId));
+                }
+            }
+        }
+    }
+
+    public void markIdentityProviderAvailable() {
+        synchronized (TemporaryTokenRepository.class) {
+            Map<String, String> health = session.singleUseObjects().get(cacheKey("idp-health", "current"));
+            if (health != null && "down".equals(health.get("status"))) {
+                session.singleUseObjects().put(cacheKey("idp-health", "current"), 62,
+                        Map.of("status", "up", "cutoff", health.get("cutoff")));
+            }
+        }
+    }
+
     private void consumeLoginAssertion(IdentityAssertion assertion) {
+        requireIdentityProviderAvailable();
+        Map<String, String> providerFence = session.singleUseObjects().get(cacheKey("idp-health", "current"));
+        if (providerFence != null && assertion.getSourceIssuedAtMillis() <= Long.parseLong(providerFence.get("cutoff"))) {
+            throw new BadRequestException("Proof predates identity provider logout");
+        }
         if (session.singleUseObjects().contains(cacheKey("closed-session", assertion.getSourceSessionId()))) {
             throw new BadRequestException("Source session closed");
         }
