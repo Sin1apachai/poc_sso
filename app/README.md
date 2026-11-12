@@ -13,6 +13,8 @@ Compose กำหนด environment แยกชื่อระบบ ฐาน�
 
 กำหนดรอบใน `.env` ด้วย `APP_A_HEARTBEAT_INTERVAL_SECONDS` และ `APP_B_HEARTBEAT_INTERVAL_SECONDS` หน่วยวินาที ค่าเริ่มต้น 120 Browser และ Backend ใช้ค่าเดียวกันของแต่ละแอป หลังแก้ให้ recreate container A/B และรีเฟรชหน้าเว็บ อ่าน [ขั้นตอนตั้งค่า](../docs/keycloak/SETUP-GUIDE.md#ตั้งรอบ-heartbeat-ab-ผ่าน-env)
 
+Heartbeat เขียน JSON log พร้อมเวลา UTC: `session_heartbeat` สำหรับ Browser → Backend, `keycloak_token_check` สำหรับ Backend → Keycloak และ `sso_session_ended` เมื่อตรวจไม่ผ่านและล้าง session อ่านด้วย `docker compose logs -f --timestamps app-a app-b` โดยไม่บันทึก token หรือข้อมูลลับ
+
 Token ของระบบจาก Login อายุ 1 ชั่วโมง ส่วน SSO app token ไม่เกินอายุ token กลาง การเรียก `/revoke` ต้องใช้ authority C; A/B ใช้ credentials ของตัวเองได้เฉพาะ introspection ใน flow นี้
 
 Token กลางและ app token เก็บใน PostgreSQL ของแอป: ฐานข้อมูลเริ่มต้น A = `app_a`, B = `app_b`, ตาราง `public.session` คอลัมน์ `sess` เป็น JSON โดย `sso.accessToken` เป็น token กลาง, `sso.appToken` เป็น app token หลัง SSO และ `local.appToken` เป็น app token จาก Login ปกติ Browser มีเพียง session cookie และ cookie ผูกคำขอ SSO ไม่ใช้ localStorage ดู [วิธีเชื่อมและ query token](../docs/keycloak/SETUP-GUIDE.md#เชื่อม-postgresql-และหา-token-ที่-ab-เก็บไว้)

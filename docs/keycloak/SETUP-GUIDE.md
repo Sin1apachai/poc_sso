@@ -151,6 +151,29 @@ docker compose up -d --no-deps --force-recreate app-a app-b
 
 C ยังไม่มี heartbeat ไปตรวจ token กับ Keycloak: หน้า C อ่าน `/sso/status` จากฐานข้อมูลของตัวเองและตรวจเวลาหมดอายุ พร้อมรับ notification ที่ `/logout/keycloak` การล้าง session เมื่อ Keycloak ติดต่อไม่ได้ในหัวข้อนี้ใช้กับ SSO ของ A/B ส่วนการตรวจ C ว่า online หรือไม่เป็น heartbeat คนละทิศทางจาก Keycloak → C
 
+### ดู log ของ heartbeat
+
+รันจากโฟลเดอร์โครงการเพื่อดูทุกเส้นทางพร้อมกัน:
+
+```sh
+docker compose logs --follow --since 5m --timestamps app-a app-b keycloak app-control
+```
+
+รายการ heartbeat มี JSON พร้อม `timestamp` แบบ ISO 8601 เวลา UTC (`Z`), `event`, `system`, `from`, `to`, ผลตรวจ และเวลาที่ใช้ `durationMs` ส่วน `--timestamps` เพิ่มเวลาของ Docker ให้ทุกบรรทัดด้วย Keycloak อาจมี prefix ระดับ INFO ก่อน JSON
+
+| Event                | อยู่ใน service | หมายถึง                                                                                                                                         |
+| -------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| session_heartbeat    | app-a / app-b  | Browser เรียก `/session/heartbeat`; มี mode, status และ reason                                                                                  |
+| keycloak_token_check | app-a / app-b  | Backend ตรวจ token กับ Keycloak; มี trigger heartbeat/request, active/outcome หรือ reason เมื่อเชื่อมต่อไม่ได้                                  |
+| token_introspection  | keycloak       | Keycloak รับคำขอ introspection; แสดง client ผู้ส่งและ active                                                                                    |
+| idp_heartbeat_check  | keycloak       | Keycloak ตรวจ C; source เป็น scheduled/manual มี healthy และ status; รอบ scheduled มี failureCount, failureThreshold, down และ nextCheckSeconds |
+| idp_heartbeat        | app-control    | C รับคำขอ health check จาก Keycloak; source เป็น scheduled/manual                                                                               |
+| sso_session_ended    | app-a / app-b  | ล้าง session SSO หลังการตรวจไม่ผ่าน; เช่น verification-unavailable, session-expired หรือ session-revoked                                        |
+
+ดู `active`, `healthy` หรือ `outcome` ร่วมกับ HTTP `status` หากไม่มี HTTP response จะมี status เป็น null เหตุผล timeout/unreachable/http_error แยกจาก token ที่ inactive โดยไม่บันทึก JWT, cookie, รหัสผ่าน, Client Secret หรือข้อมูลผู้ใช้
+
+หากต้องการเห็น log ของ A/B ให้ Login ผ่าน SSO แล้วเปิดหน้าแอปไว้จนครบรอบที่กำหนด (ค่าเริ่มต้น 2 นาที) เมื่อ token หมดอายุจะเห็นการล้าง session โดยไม่มีการยิงไป Keycloak ส่วน Keycloak → C เป็นงานเบื้องหลังและยังตรวจได้แม้ไม่มี Browser เปิดอยู่ คำขอ Docker healthcheck ปกติไม่เพิ่ม log heartbeat กลุ่มนี้
+
 ### อายุ session, cookies และแหล่งเก็บข้อมูล
 
 | ข้อมูล                         | อายุ/ตำแหน่ง                                                        | สิ่งที่มีผลจริง                                                                |

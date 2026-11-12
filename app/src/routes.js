@@ -7,6 +7,7 @@ const { csrfToken, checkCsrf } = require("./auth/csrf");
 const config = require("./config");
 const sso = require("./sso/keycloak");
 const logoutEvents = require("./sso/logout-events");
+const { observeHeartbeat } = require("./sso/heartbeat-log");
 
 async function createRoutes() {
   const router = express.Router();
@@ -109,7 +110,7 @@ async function createRoutes() {
   router.get("/sso/callback", sso.acceptSso);
   router.post("/sso/callback", sso.acceptSso);
   router.get("/session/logout-events", (req, res) => logoutEvents.listen(req, res));
-  router.get("/session/heartbeat", requireAuthentication, (req, res) => {
+  router.get("/session/heartbeat", observeHeartbeat, requireAuthentication, (req, res) => {
     if (req.authMode === "local") {
       return res.json({
         authenticated: true,

@@ -651,6 +651,51 @@ async function verifySeparateProbeIntervals() {
     );
     pass("App C logs both manual and scheduled Keycloak heartbeat requests");
 
+    const keycloakLogs = compose(
+      "logs",
+      "--since",
+      testStartedAt,
+      "--no-log-prefix",
+      "--no-color",
+      "keycloak",
+    ).toString();
+    const checks = keycloakLogs
+      .split("\n")
+      .flatMap((line) => {
+        const start = line.indexOf('{"timestamp":');
+        if (start < 0) return [];
+        try {
+          return [JSON.parse(line.slice(start))];
+        } catch {
+          return [];
+        }
+      })
+      .filter((entry) => entry.event === "idp_heartbeat_check");
+    assert.ok(checks.some((entry) => entry.source === "manual" && entry.healthy === true));
+    assert.ok(checks.some((entry) => entry.source === "manual" && entry.healthy === false));
+    assert.ok(checks.some((entry) => entry.source === "scheduled" && entry.healthy === true));
+    assert.ok(
+      checks.some(
+        (entry) =>
+          entry.source === "scheduled" &&
+          entry.healthy === false &&
+          entry.failureCount === entry.failureThreshold &&
+          entry.down === true,
+      ),
+    );
+    assert.ok(
+      checks.every(
+        (entry) =>
+          Number.isFinite(Date.parse(entry.timestamp)) &&
+          entry.from === "keycloak" &&
+          entry.to === env.KC_IDP_ALIAS,
+      ),
+    );
+    assert.ok(!/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(JSON.stringify(checks)));
+    pass(
+      "Keycloak logs each manual and scheduled IdP probe with timestamps, failure counts, threshold and recovery results",
+    );
+
     await admin("PUT", "", { attributes: originalRealm.attributes });
     await settings.reload();
     await settings.getByTestId("idp-heartbeat-settings").waitFor();

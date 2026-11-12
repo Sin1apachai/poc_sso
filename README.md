@@ -79,6 +79,8 @@ Session จาก Login ด้วยบัญชีของแต่ละร�
 
 Token ของแอปและ token กลางเก็บฝั่ง server Browser ถือ cookie อ้างอิง session A/B เก็บ token กลางที่ `public.session` → JSON `sess.sso.accessToken` ในฐานข้อมูลของตัวเอง ดู [วิธีเชื่อม PostgreSQL และ query token](docs/keycloak/SETUP-GUIDE.md#เชื่อม-postgresql-และหา-token-ที่-ab-เก็บไว้) รายละเอียด session อยู่ใน [อายุ session และ cookies](docs/keycloak/SETUP-GUIDE.md#อายุ-session-cookies-และแหล่งเก็บข้อมูล)
 
+ดู log เส้นทาง heartbeat พร้อมเวลาได้ด้วย `docker compose logs --follow --since 5m --timestamps app-a app-b keycloak app-control` อ่าน [ความหมายของ event และผลตรวจ](docs/keycloak/SETUP-GUIDE.md#ดู-log-ของ-heartbeat)
+
 ## ตรวจสอบและทดสอบ
 
 ```sh

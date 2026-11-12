@@ -10,6 +10,7 @@ import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import lab.sso.heartbeat.HeartbeatProbe;
+import lab.sso.heartbeat.HeartbeatLog;
 import lab.sso.heartbeat.IdpHeartbeatSettings;
 import org.keycloak.models.IdentityProviderModel;
 import org.keycloak.models.KeycloakSession;
@@ -48,6 +49,8 @@ public final class HeartbeatTestResource {
             return response(400, Map.of("error", "Save a valid HTTP or HTTPS Health Check URL first."));
         }
         HeartbeatProbe.Result result = probe.check(healthUrl, HeartbeatProbe.Source.MANUAL);
+        HeartbeatLog.idpCheck(session.getContext().getRealm().getName(), alias,
+                HeartbeatProbe.Source.MANUAL, result, Map.of());
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("idpAlias", alias);
         body.put("healthy", result.healthy());

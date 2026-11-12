@@ -1,5 +1,5 @@
 {
-  "testedAt": "2026-11-11T09:56:53.457Z",
+  "testedAt": "2026-11-12T06:51:36.641Z",
   "mode": "real Keycloak scheduler + browser + C container outage",
   "tests": [
     "Health Check URL stays in IdP Settings; the native Realm settings Heartbeat tab tests the selected IdP with English results",
@@ -12,12 +12,13 @@
     "C recovery clears its old central-token status, permits a fresh token, and allows explicit SSO to A/B again",
     "When A misses the push, its existing heartbeat checks the revoked token at Keycloak and removes the SSO session",
     "A delayed logout retry uses its original cutoff and does not delete a newer SSO login",
-    "App C logs both manual and scheduled Keycloak heartbeat requests"
+    "App C logs both manual and scheduled Keycloak heartbeat requests",
+    "Keycloak logs each manual and scheduled IdP probe with timestamps, failure counts, threshold and recovery results"
   ],
   "cadenceEvidence": {
-    "normalIntervalMs": 4011,
-    "confirmationIntervalsMs": [1001, 1005],
-    "intervalAfterRecoveryMs": 4011,
+    "normalIntervalMs": 4008,
+    "confirmationIntervalsMs": [1994, 1009],
+    "intervalAfterRecoveryMs": 4010,
     "failuresRequired": 3
   }
 }

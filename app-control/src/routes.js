@@ -1,4 +1,5 @@
 const express = require("express");
+const config = require("./config");
 const { issueAppToken, verifyAppToken } = require("./auth/app-token");
 const apiSso = require("./sso/api-sso");
 const ssoStatus = require("./sso/sso-status");
@@ -38,6 +39,9 @@ async function createRoutes() {
           JSON.stringify({
             timestamp: new Date().toISOString(),
             event: "idp_heartbeat",
+            system: config.systemId,
+            from: "keycloak",
+            to: config.systemId,
             source,
             method: req.method,
             path: req.path,

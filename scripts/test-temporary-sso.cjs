@@ -22,6 +22,7 @@ let adminToken,
   originalLogoutUrls,
   originalPermissions,
   stopped = false;
+const testStartedAt = new Date().toISOString();
 const fixtureSuffix = require("node:crypto").randomBytes(4).toString("hex");
 const deniedName = "poc-denied-" + fixtureSuffix,
   missingName = "poc-missing-" + fixtureSuffix;
@@ -588,6 +589,112 @@ async function run() {
     assert.equal((await admin("GET", "/clients/" + list[0].id + "/roles")).length, 0);
   }
   pass("Final realm users remain zero; app-a/app-b role definitions remain empty");
+
+  const manualProbe = await admin(
+    "POST",
+    "/idp-heartbeat/" + encodeURIComponent(env.KC_IDP_ALIAS) + "/test",
+  );
+  assert.equal(manualProbe.healthy, true);
+  function heartbeatLogs(service) {
+    return compose("logs", "--since", testStartedAt, "--no-log-prefix", "--no-color", service)
+      .toString()
+      .split("\n")
+      .flatMap((line) => {
+        const start = line.indexOf('{"timestamp":');
+        if (start < 0) return [];
+        try {
+          return [JSON.parse(line.slice(start))];
+        } catch {
+          return [];
+        }
+      });
+  }
+  for (const service of ["app-a", "app-b"]) {
+    const logs = heartbeatLogs(service);
+    assert.ok(
+      logs.some(
+        (entry) =>
+          entry.event === "session_heartbeat" &&
+          entry.from === "browser" &&
+          entry.to === service &&
+          entry.status === 200,
+      ),
+    );
+    assert.ok(logs.some((entry) => entry.event === "session_heartbeat" && entry.status === 401));
+    assert.ok(
+      logs.some(
+        (entry) =>
+          entry.event === "keycloak_token_check" &&
+          entry.to === "keycloak" &&
+          entry.outcome === "active",
+      ),
+    );
+    assert.ok(
+      logs.some((entry) => entry.event === "keycloak_token_check" && entry.outcome === "error"),
+    );
+    assert.ok(
+      logs.some(
+        (entry) =>
+          entry.event === "sso_session_ended" && entry.reason === "verification-unavailable",
+      ),
+    );
+    assert.ok(logs.every((entry) => Number.isFinite(Date.parse(entry.timestamp))));
+  }
+  const keycloakLogs = heartbeatLogs("keycloak");
+  for (const service of ["app-a", "app-b"])
+    assert.ok(
+      keycloakLogs.some(
+        (entry) =>
+          entry.event === "token_introspection" && entry.from === service && entry.active === true,
+      ),
+    );
+  assert.ok(
+    keycloakLogs.some(
+      (entry) =>
+        entry.event === "idp_heartbeat_check" &&
+        entry.source === "manual" &&
+        entry.healthy === true,
+    ),
+  );
+  assert.ok(
+    keycloakLogs.some(
+      (entry) =>
+        entry.event === "idp_heartbeat_check" &&
+        entry.source === "scheduled" &&
+        entry.healthy === true,
+    ),
+  );
+  const controlLogs = heartbeatLogs("app-control");
+  assert.ok(
+    controlLogs.some(
+      (entry) =>
+        entry.event === "idp_heartbeat" && entry.from === "keycloak" && entry.to === "app-control",
+    ),
+  );
+  const records = [
+    ...keycloakLogs,
+    ...controlLogs,
+    ...heartbeatLogs("app-a"),
+    ...heartbeatLogs("app-b"),
+  ];
+  assert.ok(records.every((entry) => Number.isFinite(Date.parse(entry.timestamp))));
+  assert.ok(
+    !/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/.test(JSON.stringify(records)),
+    "Heartbeat metadata must not contain JWTs",
+  );
+  for (const value of [
+    env.APP_A_KC_CLIENT_SECRET,
+    env.APP_B_KC_CLIENT_SECRET,
+    env.CONTROL_KC_CLIENT_SECRET,
+  ])
+    assert.ok(
+      !JSON.stringify(records).includes(value),
+      "Heartbeat metadata must not contain client secrets",
+    );
+  pass(
+    "Timestamped heartbeat logs cover Browser to A/B, A/B to Keycloak, Keycloak to C, and failed verification without logging JWTs or client secrets",
+  );
+
   fs.writeFileSync(
     "docs/flows/TEST-RESULTS.json",
     JSON.stringify(

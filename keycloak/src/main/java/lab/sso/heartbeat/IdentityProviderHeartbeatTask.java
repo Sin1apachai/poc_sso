@@ -64,7 +64,8 @@ public final class IdentityProviderHeartbeatTask implements ScheduledTask {
         int intervalSeconds = settings.nextCheckIntervalSeconds(state.failures, state.down);
         if (now - state.lastCheckedMillis < intervalSeconds * 1000L) return;
         state.lastCheckedMillis = now;
-        boolean healthy = heartbeatProbe.check(settings.healthUrl(), HeartbeatProbe.Source.SCHEDULED).healthy();
+        HeartbeatProbe.Result result = heartbeatProbe.check(settings.healthUrl(), HeartbeatProbe.Source.SCHEDULED);
+        boolean healthy = result.healthy();
         if (healthy) {
             state.failures = 0;
             if (state.down) LOG.log(Level.INFO, "IdP recovered for realm {0}", realm.getName());
@@ -83,6 +84,11 @@ public final class IdentityProviderHeartbeatTask implements ScheduledTask {
                 repository.markIdentityProviderUnavailable(state.logoutCutoffMillis);
             }
         }
+        HeartbeatLog.idpCheck(realm.getName(), settings.identityProviderAlias(),
+                HeartbeatProbe.Source.SCHEDULED, result, Map.of(
+                        "failureCount", state.failures, "failureThreshold", settings.failureThreshold(),
+                        "down", state.down,
+                        "nextCheckSeconds", settings.nextCheckIntervalSeconds(state.failures, state.down)));
         if (state.down || !state.pendingTargets.isEmpty()) {
             Set<String> configured = new LinkedHashSet<>(new RealmSsoConfiguration(session, realm).getLogoutUrls());
             state.pendingTargets.retainAll(configured);

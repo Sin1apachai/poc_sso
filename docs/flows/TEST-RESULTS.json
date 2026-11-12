@@ -1,5 +1,5 @@
 {
-  "testedAt": "2026-11-12T06:25:07.783Z",
+  "testedAt": "2026-11-12T06:49:01.957Z",
   "mode": "real Compose A/B/C + PostgreSQL + Keycloak 26.8.1 custom extension",
   "heartbeatIntervalsSeconds": {
     "appA": 120,
@@ -23,6 +23,7 @@
     "Keycloak outage clears A/B SSO sessions on heartbeat and due protected requests, returns Login with a connection notice, and preserves local login",
     "Keycloak outage during Login C retries actual token issuance three times, reports failure without claiming SSO success, and keeps C local login usable",
     "Actual Keycloak container outage: A/B each retry three checks, remain at their own login and display modal",
-    "Final realm users remain zero; app-a/app-b role definitions remain empty"
+    "Final realm users remain zero; app-a/app-b role definitions remain empty",
+    "Timestamped heartbeat logs cover Browser to A/B, A/B to Keycloak, Keycloak to C, and failed verification without logging JWTs or client secrets"
   ]
 }

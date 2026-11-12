@@ -11,6 +11,9 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import org.keycloak.models.ClientModel;
+import lab.sso.heartbeat.HeartbeatLog;
 import lab.sso.security.SsoClientAuthenticator;
 import lab.sso.service.CentralTokenService;
 
@@ -78,7 +81,32 @@ public class CentralSsoResource {
     @Consumes(MediaType.APPLICATION_FORM_URLENCODED)
     @Produces(MediaType.APPLICATION_JSON)
     public Response introspect(@FormParam("token") String token) {
-        return json(tokenService.introspectToken(clientAuthenticator.authenticate(), token));
+        long started = System.nanoTime();
+        ClientModel client = null;
+        int status = 500;
+        Boolean active = null;
+        try {
+            client = clientAuthenticator.authenticate();
+            Map<String, Object> result = tokenService.introspectToken(client, token);
+            active = Boolean.TRUE.equals(result.get("active"));
+            status = 200;
+            return json(result);
+        } catch (WebApplicationException error) {
+            status = error.getResponse().getStatus();
+            throw error;
+        } finally {
+            Map<String, Object> fields = new LinkedHashMap<>();
+            fields.put("from", client == null ? "unknown" : client.getClientId());
+            fields.put("to", "keycloak");
+            fields.put("realm", client == null ? "unknown" : client.getRealm().getName());
+            fields.put("method", "POST");
+            fields.put("path", "/temporary-sso-poc/introspect");
+            fields.put("status", status);
+            fields.put("active", active);
+            fields.put("outcome", active == null ? "error" : active ? "active" : "inactive");
+            fields.put("durationMs", (System.nanoTime() - started) / 1_000_000);
+            HeartbeatLog.write("token_introspection", fields);
+        }
     }
 
     @POST

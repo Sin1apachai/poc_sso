@@ -7,6 +7,7 @@ const { probe, probeStatus } = require("./sso-connectivity");
 const { issueAppToken, verifyAppToken } = require("../auth/app-token");
 const { pool } = require("../db/database");
 const logoutEvents = require("./logout-events");
+const { logHeartbeat, elapsedMs } = require("./heartbeat-log");
 const { saveSession, regenerateSession } = require("../auth/auth");
 let clientPromise;
 
@@ -232,6 +233,8 @@ async function acceptPostedToken(req, res) {
 
 async function rejectSession(req, res, reason, { showModal = false } = {}) {
   // Destroy the authenticated app session; keep only a fresh anonymous notice.
+  res.locals.heartbeatReason = reason;
+  const hadSso = !!req.session.sso;
   await regenerateSession(req);
   req.session.ssoChecked = true;
   if (["forbidden", "missing-user"].includes(reason)) {
@@ -245,6 +248,7 @@ async function rejectSession(req, res, reason, { showModal = false } = {}) {
     req.session.loginNotice = "session-expired";
   }
   await saveSession(req);
+  if (hadSso) logHeartbeat("sso_session_ended", { from: config.systemId, to: "browser", reason });
   if (req.path === "/session/heartbeat") {
     return res.status(401).json({ authenticated: false, reason, loginUrl: "/login" });
   }
@@ -258,6 +262,7 @@ async function denyAccess(req, res, reason = true, options = {}) {
 async function requireSso(req, res, next) {
   if (!req.session.sso) {
     if (req.path === "/session/heartbeat") {
+      res.locals.heartbeatReason = "login-required";
       return res
         .status(401)
         .json({ authenticated: false, reason: "login-required", loginUrl: "/login" });
@@ -281,7 +286,16 @@ async function requireSso(req, res, next) {
       !req.session.sso.checkedAt ||
       Date.now() - req.session.sso.checkedAt >= config.heartbeatIntervalMs
     ) {
-      let response;
+      let response, status;
+      const started = process.hrtime.bigint();
+      const details = {
+        from: config.systemId,
+        to: "keycloak",
+        method: "POST",
+        path: "/temporary-sso-poc/introspect",
+        trigger: req.path === "/session/heartbeat" ? "heartbeat" : "request",
+      };
+      let failureReason = "unreachable";
       try {
         response = await fetch(config.kcInternalUrl + "/temporary-sso-poc/introspect", {
           method: "POST",
@@ -294,13 +308,29 @@ async function requireSso(req, res, next) {
           signal: AbortSignal.timeout(5000),
         });
         if (!response.ok) {
+          failureReason = "http_error";
           throw new Error("Keycloak unavailable");
         }
-      } catch {
+        failureReason = "invalid_response";
+        status = await response.json();
+        logHeartbeat("keycloak_token_check", {
+          ...details,
+          status: response.status,
+          active: status.active === true,
+          outcome: status.active ? "active" : "inactive",
+          durationMs: elapsedMs(started),
+        });
+      } catch (error) {
+        logHeartbeat("keycloak_token_check", {
+          ...details,
+          status: response?.status || null,
+          outcome: "error",
+          reason: ["TimeoutError", "AbortError"].includes(error.name) ? "timeout" : failureReason,
+          durationMs: elapsedMs(started),
+        });
         // Verification failure ends this application SSO session immediately.
         return await rejectSession(req, res, "verification-unavailable");
       }
-      const status = await response.json();
       if (!status.active) {
         return await rejectSession(req, res, "session-revoked");
       }
