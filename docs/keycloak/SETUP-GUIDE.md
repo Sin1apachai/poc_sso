@@ -115,14 +115,41 @@ token.exp(now + lifetimeSeconds);
 | รายการ                          | กำหนดที่ไหน                                              | ผล                                                                                   |
 | ------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | อายุ token กลาง                 | UI Access Token Lifespan และเพดานใน Java                 | กำหนด exp ของ token                                                                  |
-| รอบ heartbeat A/B               | [app/public/heartbeat.js](../../app/public/heartbeat.js) | Browser เรียกแอปทุก 1 ชั่วโมง เฉพาะหน้าที่ใช้งาน SSO                                 |
+| รอบ heartbeat A/B               | [app/public/heartbeat.js](../../app/public/heartbeat.js) | Browser เรียกตาม .env ของแอปนั้น ค่าเริ่มต้น 2 นาที เฉพาะหน้าที่ใช้งาน SSO           |
 | การตรวจ token ก่อนเข้า resource | [app/src/sso/keycloak.js](../../app/src/sso/keycloak.js) | ตรวจหมดอายุทุกครั้งที่ผ่าน requireSso และเรียก custom introspection เมื่อถึงเงื่อนไข |
 
-Heartbeat ไม่ได้ทำให้ token อายุ 15 นาทีอยู่ได้นาน 1 ชั่วโมง เมื่อหมดอายุแล้ว แอปจะล้าง SSO session ในการตรวจครั้งถัดไป หากเปิดหน้าค้างโดยไม่ส่งคำขอ อาจยังเห็นหน้าเดิมจน heartbeat ทำงาน ไม่ได้แปลว่า token ยัง valid หรือมี timer สั่งเปลี่ยนหน้าทันทีเมื่อครบ 15 นาที
+การตรวจทุก 2 นาทีไม่ได้ต่ออายุ token กลางที่มีอายุ 15 นาที เมื่อหมดอายุแล้ว แอปจะล้าง SSO session ในการตรวจครั้งถัดไป หากเปิดหน้าค้างโดยไม่ส่งคำขอ อาจยังเห็นหน้าเดิมจน heartbeat ทำงาน ไม่ได้แปลว่า token ยัง valid หรือมี timer สั่งเปลี่ยนหน้าทันทีเมื่อครบ 15 นาที
 
-**ถ้า token หมดอายุแล้ว A/B จะปฏิเสธและล้าง session โดยไม่เรียก Keycloak introspection** ดังนั้นเมื่อ token อายุ 15 นาทีและ heartbeat ครั้งแรกอยู่ที่ 1 ชั่วโมง รอบนั้นจะตรวจพบหมดอายุก่อนถึงขั้นเรียก Keycloak ส่วน Logout C ใช้การแจ้ง logout แยกจาก heartbeat
+**ถ้า token หมดอายุแล้ว A/B จะปฏิเสธและล้าง session โดยไม่เรียก Keycloak introspection** เมื่อใช้รอบ 2 นาที จะตรวจสถานะกับ Keycloak ขณะ token ยังไม่หมดอายุ และตรวจอายุในเครื่องก่อนทุกครั้ง เมื่อหมดอายุแล้วจึงล้าง session โดยไม่เรียก API ส่วน Logout C ใช้การแจ้ง logout แยกจาก heartbeat
+
+หากถึงรอบตรวจแล้ว Keycloak ติดต่อไม่ได้, timeout 5 วินาที หรือ HTTP error แอปจะล้าง session SSO และกลับ Login พร้อมแจ้งการเชื่อมต่อขัดข้อง โดย heartbeat ตอบ 401 ส่วนคำขอหน้าที่ต้องตรวจจะ redirect ไป Login การตรวจสถานะไม่สำเร็จเพียงครั้งเดียวก็ล้าง session ไม่รอ heartbeat รอบถัดไป และไม่กระทบ Login ปกติที่ใช้บัญชีของ A/B เอง
 
 Heartbeat ของ A/B ตรวจ token กลางกับ Keycloak ผ่าน custom `/temporary-sso-poc/introspect` เมื่อ token ยังไม่หมดอายุ ส่วนการตรวจว่า IdP C online เป็น background task ของ Keycloak อีกชุด ตั้งค่าได้ตามหัวข้อถัดไป ไม่ใช่การตรวจ session/บัญชีรายผู้ใช้ที่ C
+
+### ตั้งรอบ heartbeat A/B ผ่าน .env
+
+แก้ไฟล์ `.env` ที่ root โครงการ กำหนดแยกแต่ละระบบเป็นหน่วยวินาที:
+
+```env
+APP_A_HEARTBEAT_INTERVAL_SECONDS=120
+APP_B_HEARTBEAT_INTERVAL_SECONDS=120
+```
+
+`120` คือ 2 นาที และ `60` คือ 1 นาที หากไม่กำหนดจะใช้ค่าเริ่มต้น 120 วินาที ทั้งสองระบบไม่จำเป็นต้องใช้ค่าเดียวกัน Compose ส่งค่าของแต่ละระบบเข้า container ด้วยชื่อ `HEARTBEAT_INTERVAL_SECONDS`
+
+แต่ละแอปอ่านค่าที่ [config.js](../../app/src/config.js) แล้วใช้ร่วมกันสองจุด: ส่งให้ Browser เพื่อกำหนดรอบ `/session/heartbeat` และใช้เป็นระยะห่างการ introspect ในคำขอใช้งานที่ต้องตรวจสถานะ ส่วนการเรียก `/session/heartbeat` โดยตรงจะ introspect ทุกครั้งที่ token ยังไม่หมดอายุ
+
+รับจำนวนเต็มตั้งแต่ 1–2147483 วินาที โดยเพดานมาจากขนาด timer ของ Browser ค่า 0, ติดลบ, ทศนิยม หรือข้อความไม่ถูกต้องทำให้แอปไม่เริ่มทำงาน ไม่ใช้ 0 เพื่อปิดการตรวจ
+
+หลังแก้ `.env` ใช้คำสั่งนี้เพื่อสร้าง container A/B ใหม่ด้วยค่าใหม่ ไม่ต้อง build image สำหรับการเปลี่ยนค่าเวลา:
+
+```sh
+docker compose up -d --no-deps --force-recreate app-a app-b
+```
+
+จากนั้นรีเฟรชหน้าของ A/B ที่เปิดอยู่ เพื่อให้ Browser รับรอบใหม่ การตรวจครั้งแรกเกิดหลังเปิดหน้า SSO ครบหนึ่งรอบ การ Login ปกติของ A/B ไม่เริ่ม heartbeat นี้ การเปลี่ยนรอบไม่ได้ต่ออายุ token หรือเปลี่ยน heartbeat ที่ Keycloak ตรวจ C ในแท็บ Heartbeat
+
+C ยังไม่มี heartbeat ไปตรวจ token กับ Keycloak: หน้า C อ่าน `/sso/status` จากฐานข้อมูลของตัวเองและตรวจเวลาหมดอายุ พร้อมรับ notification ที่ `/logout/keycloak` การล้าง session เมื่อ Keycloak ติดต่อไม่ได้ในหัวข้อนี้ใช้กับ SSO ของ A/B ส่วนการตรวจ C ว่า online หรือไม่เป็น heartbeat คนละทิศทางจาก Keycloak → C
 
 ### อายุ session, cookies และแหล่งเก็บข้อมูล
 
@@ -503,7 +530,7 @@ Token เก็บฝั่ง server หน้าเว็บได้รับ
 1. เปิด C `/login` แล้วดูสถานะ token สำเร็จและแถว app-control ในเมนู SSO Tokens ก่อนเลือก A/B
 2. เปิด A `/login` กดเข้าสู่ระบบด้วย App C → เข้า A ตามสิทธิ์ ถ้ายังไม่ได้ Login C จึงต้องกรอกรหัสผ่าน C
 3. เปิด B `/sso` ใน browser เดียวกัน → เข้า B ไม่ถาม password C ซ้ำ
-4. เปิด C dashboard → Login C ยังอยู่ และกดลิงก์ A/B ได้
+4. เปิด C dashboard → Login C ยังอยู่ กดลิงก์ A/B แล้ว browser ไป `/sso` ของแอปนั้นโดยตรง A/B เริ่ม SSO และตรวจสิทธิ์ ไม่มี `/connect` ที่ C หรือการตรวจสถานะขวางการกดลิงก์
 5. Logout C → แท็บ SSO ของแอปที่ตั้ง Logout URL ไว้กลับ Login; session จาก Login ด้วยบัญชี A/B เองยังคงอยู่
 6. สร้าง user C ที่ไม่มี read A → กด SSO A ได้ modal ไม่มีสิทธิ์
 7. ให้ read แต่ไม่มีบัญชีในระบบ A → ได้ modal ไม่มีผู้ใช้ตรงกัน
@@ -516,7 +543,7 @@ docker compose start keycloak
 npm run test:integration
 ```
 
-Integration test ตั้ง token 3 วินาทีและเร่ง heartbeat ด้วยการแทรก script จาก test เท่านั้น เตรียม Logout URLs ของ A/B/C ชั่วคราวสำหรับกรณีทดสอบ เมื่อจบคืนรายการ URL กับ lifespan เดิม เริ่ม Keycloak กลับ และลบบัญชี fixture สองบัญชีที่สร้างขึ้น ไม่รอหนึ่งชั่วโมงจริง รายละเอียดผลอยู่ใน [TEST-RESULTS.json](../flows/TEST-RESULTS.json)
+Integration test ตั้ง token 3 วินาทีและเร่ง heartbeat ด้วยการแทรก script จาก test เท่านั้น เตรียม Logout URLs ของ A/B/C ชั่วคราวสำหรับกรณีทดสอบ เมื่อจบคืนรายการ URL กับ lifespan เดิม เริ่ม Keycloak กลับ และลบบัญชี fixture สองบัญชีที่สร้างขึ้น ไม่ได้รอครบรอบ heartbeat จริง รายละเอียดผลอยู่ใน [TEST-RESULTS.json](../flows/TEST-RESULTS.json)
 
 ### ตรวจข้อมูล token ผ่าน Browser
 

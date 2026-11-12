@@ -12,7 +12,7 @@
 </section>
 <% } %>
 <section id="sso-panel" class="banner" data-status="<%= ssoState.status %>"
-  data-message="<%= ssoDisplay.message %>" data-notice="<%= showSsoNotice ? '1':'0' %>">
+  data-message="<%= ssoDisplay.message %>">
   <div>
     <h2>Single Sign-On</h2>
     <p id="sso-status" role="status" aria-live="polite"><%= ssoDisplay.label %></p>
@@ -25,17 +25,12 @@
   </form>
 </section>
 <section class="systems">
-  <% for(const system of [{id:'app-a',name:'A',allowed:user.allow_a},{id:'app-b',name:'B',allowed:user.allow_b}]){ %>
+  <% for(const system of [{name:'A',url:'http://localhost:4001/sso'},{name:'B',url:'http://localhost:4002/sso'}]){ %>
   <article class="system-card">
     <span class="system-icon"><%= system.name %></span>
     <h2>ระบบ <%= system.name %></h2>
     <p>Application <%= system.name %></p>
-    <% if(user.enabled && system.allowed){ %>
-    <a class="button primary" data-system-link href="/connect/<%= system.id %>">เข้าสู่ระบบ
-      <%= system.name %> →</a>
-    <% }else{ %>
-    <span class="badge">ยังไม่มีสิทธิ์</span>
-    <% } %>
+    <a class="button primary" href="<%= system.url %>">เข้าสู่ระบบ <%= system.name %> →</a>
   </article>
   <% } %>
 </section>

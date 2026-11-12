@@ -1,6 +1,7 @@
 (() => {
-  // PoC: check once per hour only. No focus checks or token-expiry timers.
-  const intervalMs = 60 * 60 * 1000;
+  // The server supplies the same configured interval used for backend token checks.
+  const intervalMs = Number(document.currentScript.dataset.intervalMs);
+  if (!Number.isInteger(intervalMs) || intervalMs < 1000 || intervalMs > 2147483647) return;
   let inFlight = false;
   // Event-only logout notification; it does not add heartbeat polling or an expiry timer.
   const logoutEvents = new EventSource("/session/logout-events");
@@ -18,7 +19,8 @@
         credentials: "same-origin",
         cache: "no-store",
         redirect: "error",
-        signal: AbortSignal.timeout(5000),
+        // Allow the backend 5-second Keycloak timeout plus session cleanup.
+        signal: AbortSignal.timeout(10000),
       });
       if (response.status === 401 || response.status === 403) {
         window.location.replace("/login");
@@ -32,7 +34,7 @@
         window.location.replace("/login");
       }
     } catch {
-      // A connectivity failure does not prove expiry; wait for the next hourly check.
+      // Keycloak failures return 401 after session cleanup; this catch is for app connectivity.
     } finally {
       inFlight = false;
     }

@@ -1,4 +1,14 @@
+const heartbeatIntervalSeconds = Number(process.env.HEARTBEAT_INTERVAL_SECONDS ?? 120);
+if (
+  !Number.isInteger(heartbeatIntervalSeconds) ||
+  heartbeatIntervalSeconds < 1 ||
+  heartbeatIntervalSeconds > Math.floor(2147483647 / 1000)
+) {
+  throw new Error("HEARTBEAT_INTERVAL_SECONDS must be an integer between 1 and 2147483");
+}
+
 module.exports = {
+  heartbeatIntervalMs: heartbeatIntervalSeconds * 1000,
   controlPublicUrl: process.env.CONTROL_PUBLIC_URL || "http://localhost:4003",
   controlInternalUrl: process.env.CONTROL_INTERNAL_URL || "http://app-control:4003",
   systemName: process.env.SYSTEM_NAME || "ระบบ",

@@ -87,6 +87,14 @@ async function ctx() {
   const c = await browser.newContext();
   contexts.push(c);
   c.setDefaultTimeout(20000);
+  await c.addInitScript(() => {
+    const original = window.setInterval;
+    window.__heartbeatIntervals = [];
+    window.setInterval = (fn, ms, ...args) => {
+      window.__heartbeatIntervals.push(ms);
+      return original(fn, ms, ...args);
+    };
+  });
   return c;
 }
 async function cLogin(c) {
@@ -174,6 +182,7 @@ async function run() {
   assert.equal(payload.temporary_identity, true);
   assert.deepEqual(Object.keys(payload.app_permissions).sort(), ["app-a", "app-b"]);
   assert.equal(payload.aud, env.KC_AUDIENCE);
+  const rowsBeforeOpeningB = await admin("GET", "/temporary-sso-tokens?search=" + payload.sub);
   const b = await sso(c, 4002);
   await dashboard(b, 4002);
   const tb = captures.at(-1);
@@ -199,7 +208,8 @@ async function run() {
   )[0].access_token;
   assert.equal(ta.access_token, sourceToken, "C/A/B must hold identical JWT bytes");
   const sharedRows = await admin("GET", "/temporary-sso-tokens?search=" + payload.sub);
-  assert.equal(sharedRows.total, 1, "Opening A/B must not add central tokens");
+  assert.equal(sharedRows.total, rowsBeforeOpeningB.total, "Opening B must not add central tokens");
+  assert.equal(sharedRows.items.filter((row) => row.id === payload.jti).length, 1);
   assert.equal(
     sql(
       "app-control",
@@ -249,6 +259,25 @@ async function run() {
   pass(
     "Proof tampering/replay and callback replay/cross-app token rejected; introspection accepts the same JWT for both entitled clients",
   );
+  for (const [page, port, name] of [
+    [a, 4001, "A"],
+    [b, 4002, "B"],
+  ]) {
+    const key = "APP_" + name + "_HEARTBEAT_INTERVAL_SECONDS";
+    const expected = Number(process.env[key] || env[key] || 120) * 1000;
+    assert.equal(
+      Number(await page.locator('script[src="/heartbeat.js"]').getAttribute("data-interval-ms")),
+      expected,
+    );
+    assert.ok(
+      await page.evaluate((interval) => window.__heartbeatIntervals.includes(interval), expected),
+    );
+    const state = await (
+      await c.request.get("http://localhost:" + port + "/session/heartbeat")
+    ).json();
+    assert.equal(state.intervalMs, expected);
+  }
+  pass("A/B use their configured heartbeat interval in the browser timer and backend response");
   // C logout must clear SSO sessions but leave a separate local A session intact.
   const local = await ctx(),
     lp = await loginForm(local, 4001);
@@ -329,10 +358,18 @@ async function run() {
   );
   const fromC = await manager.newPage();
   await fromC.goto("http://localhost:4003/");
-  await fromC.locator('a[href="/connect/app-a"]').click();
+  const directNavigations = [];
+  fromC.on("request", (request) => {
+    if (request.isNavigationRequest() && request.frame() === fromC.mainFrame())
+      directNavigations.push(request.url());
+  });
+  // Status display must not block the link when its polling request fails.
+  await fromC.route("**/sso/status", (route) => route.abort());
+  await fromC.locator('a[href="http://localhost:4001/sso"]').click();
+  assert.equal(directNavigations[0], "http://localhost:4001/sso");
   await dashboard(fromC, 4001);
   pass(
-    "Direct login C reports actual token issuance correctly and the A link signs in without asking for the password again",
+    "C links navigate directly to A /sso without a C redirect or status gate, then sign in without asking for the password again",
   );
   await mp.goto("http://localhost:4003/users");
   for (const [username, email, allow] of [
@@ -355,6 +392,13 @@ async function run() {
   assert.match(await dp.locator("#access-denied").innerText(), /ไม่มีสิทธิ/);
   await dp.reload();
   assert.equal(await dp.locator("#access-denied").count(), 0);
+  const deniedControl = await denied.newPage();
+  await deniedControl.goto("http://localhost:4003/");
+  // C offers the links regardless of app permissions; the destination owns its Login result.
+  await deniedControl.locator('a[href="http://localhost:4002/sso"]').waitFor();
+  await deniedControl.locator('a[href="http://localhost:4001/sso"]').click();
+  await deniedControl.waitForURL("http://localhost:4001/login");
+  await deniedControl.locator("#access-denied[open]").waitFor();
   const missing = await ctx(),
     np = await sso(missing, 4001, missingName);
   await np.waitForURL("http://localhost:4001/login");
@@ -381,12 +425,17 @@ async function run() {
   pass(
     "Read/write/delete set in C appear in the shared JWT after re-login, with no Keycloak role mappings",
   );
-  // Real expiry, accelerated timer without changing application source or its one-hour interval.
+  // Real expiry, accelerated only in this test browser without changing application settings.
   await admin("PUT", "", { accessTokenLifespan: 3 });
   const exp = await ctx();
   await exp.addInitScript(() => {
     const original = window.setInterval;
-    window.setInterval = (fn, ms, ...args) => original(fn, ms === 3600000 ? 250 : ms, ...args);
+    window.setInterval = (fn, ms, ...args) => {
+      const configured = Number(
+        document.querySelector('script[src="/heartbeat.js"]')?.dataset.intervalMs,
+      );
+      return original(fn, ms === configured ? 250 : ms, ...args);
+    };
   });
   const ep = await sso(exp);
   await dashboard(ep, 4001);
@@ -394,7 +443,7 @@ async function run() {
   assert.match(await ep.locator("body").innerText(), /หมดอายุ/);
   await admin("PUT", "", { accessTokenLifespan: originalRealm.accessTokenLifespan });
   pass(
-    "Real token expiry removes the app session on heartbeat and returns login; one-hour browser timer accelerated only by test injection",
+    "Real token expiry removes the app session on heartbeat and returns login; configured browser timer accelerated only by test injection",
   );
   // Lost connection AFTER successful preflight: the parent handoff page must recover.
   const failed = await ctx();
@@ -406,7 +455,60 @@ async function run() {
   pass(
     "Keycloak handoff connection failure returns to A login with connection modal instead of a browser error page",
   );
-  // Real Keycloak outage: no redirect away from A/B login after three probes.
+  // Existing SSO must end on an actual verification outage, including protected requests.
+  const activeOutage = await ctx();
+  await activeOutage.addInitScript(() => {
+    const original = window.setInterval;
+    window.setInterval = (fn, ms, ...args) => {
+      const configured = Number(
+        document.querySelector('script[src="/heartbeat.js"]')?.dataset.intervalMs,
+      );
+      return original(fn, ms === configured ? 1000 : ms, ...args);
+    };
+  });
+  const pulseA = await sso(activeOutage, 4001);
+  await dashboard(pulseA, 4001);
+  const pulseB = await sso(activeOutage, 4002);
+  await dashboard(pulseB, 4002);
+  const guarded = await ctx();
+  await guarded.route("**/session/heartbeat", (route) => route.abort());
+  const guardedA = await sso(guarded, 4001);
+  await dashboard(guardedA, 4001);
+  const guardedB = await sso(guarded, 4002);
+  await dashboard(guardedB, 4002);
+  const endedSessions = [];
+  for (const [context, forceCheck] of [
+    [activeOutage, false],
+    [guarded, true],
+  ]) {
+    for (const name of ["A", "B"]) {
+      const cookie = (await context.cookies()).find(
+        (item) => item.name === env["APP_" + name + "_COOKIE_NAME"],
+      );
+      const sid = decodeURIComponent(cookie.value).slice(2).split(".")[0];
+      const service = "app-" + name.toLowerCase();
+      endedSessions.push({ service, sid });
+      if (forceCheck)
+        sql(
+          service,
+          "UPDATE session SET sess=jsonb_set(sess::jsonb,'{sso,checkedAt}','0') WHERE sid=$1",
+          [sid],
+        );
+    }
+  }
+  const localOutage = await ctx();
+  const localPage = await loginForm(localOutage, 4001);
+  await localPage.locator("[name=email]").fill("admin@example.com");
+  await localPage.locator("[name=password]").fill("admin-a-demo");
+  await localPage.locator("button[type=submit]").click();
+  await localPage.waitForURL("http://localhost:4001/");
+  const outageFailures = [pulseA, pulseB].map((page) =>
+    page.waitForResponse(
+      (response) => response.url().endsWith("/session/heartbeat") && response.status() === 401,
+      { timeout: 20000 },
+    ),
+  );
+  // A new SSO attempt must still remain on Login after three failed probes.
   const outage = await ctx();
   await outage.addInitScript(() => {
     const original = window.fetch;
@@ -421,6 +523,34 @@ async function run() {
     oq = await loginForm(outage, 4002);
   compose("stop", "keycloak");
   stopped = true;
+  await Promise.all(outageFailures);
+  await pulseA.waitForURL("http://localhost:4001/login");
+  await pulseB.waitForURL("http://localhost:4002/login");
+  await pulseA.locator("#sso-unavailable[open]").waitFor();
+  await pulseB.locator("#sso-unavailable[open]").waitFor();
+  for (const [page, port] of [
+    [guardedA, 4001],
+    [guardedB, 4002],
+  ]) {
+    await page.goto("http://localhost:" + port + "/");
+    await page.waitForURL("http://localhost:" + port + "/login");
+    await page.locator("#sso-unavailable[open]").waitFor();
+  }
+  for (const { service, sid } of endedSessions) {
+    assert.equal(
+      sql(
+        service,
+        "SELECT count(*)::int AS n FROM session WHERE sid=$1 AND sess->'sso' IS NOT NULL",
+        [sid],
+      )[0].n,
+      0,
+    );
+  }
+  await localPage.reload();
+  assert.match(await localPage.locator("body").innerText(), /LOCAL LOGIN/);
+  pass(
+    "Keycloak outage clears A/B SSO sessions on heartbeat and due protected requests, returns Login with a connection notice, and preserves local login",
+  );
   for (const [page, port] of [
     [op, 4001],
     [oq, 4002],
@@ -464,6 +594,18 @@ async function run() {
       {
         testedAt: new Date().toISOString(),
         mode: "real Compose A/B/C + PostgreSQL + Keycloak 26.8.1 custom extension",
+        heartbeatIntervalsSeconds: {
+          appA: Number(
+            process.env.APP_A_HEARTBEAT_INTERVAL_SECONDS ||
+              env.APP_A_HEARTBEAT_INTERVAL_SECONDS ||
+              120,
+          ),
+          appB: Number(
+            process.env.APP_B_HEARTBEAT_INTERVAL_SECONDS ||
+              env.APP_B_HEARTBEAT_INTERVAL_SECONDS ||
+              120,
+          ),
+        },
         keycloakUsersBefore: 0,
         keycloakUsersAfter: 0,
         tests: results,

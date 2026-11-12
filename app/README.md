@@ -6,9 +6,12 @@ Compose กำหนด environment แยกชื่อระบบ ฐาน�
 - SSO สร้าง state/verifier ตรวจความพร้อม แล้วเปิดคำขอที่ C
 - `/sso/callback` รับ JWT ผ่าน browser POST จาก Keycloak ตรวจ RS256/issuer/audience/expiry/state/challenge/read และบัญชี email ตรงกัน แล้วสร้าง session ของแอป
 - callback ตอบหน้าสำเร็จในเฟรมและส่ง `sso-complete` ไปหน้าส่งต่อ C ไม่มี token ในข้อความ จากนั้น browser เปิดหน้าหลัก A/B
-- Heartbeat ของหน้า SSO ทุก 1 ชั่วโมง: ตรวจ expiry ก่อน ถ้ายังไม่หมดอายุจึงใช้ custom introspection; protected requests ตรวจ expiry ทุกคำขอและ introspect เมื่อถึงรอบ
+- Heartbeat ของหน้า SSO ตาม .env ของแต่ละแอป (ค่าเริ่มต้น 2 นาที): ตรวจ expiry ก่อน ถ้ายังไม่หมดอายุจึงใช้ custom introspection; protected requests ตรวจ expiry ทุกคำขอและ introspect เมื่อถึงรอบ
+- เมื่อถึงรอบตรวจแล้ว Keycloak ติดต่อไม่ได้/timeout/ตอบ HTTP error ให้ล้าง session SSO และกลับ Login พร้อมแจ้งการเชื่อมต่อขัดข้อง ไม่รอรอบถัดไปเพื่อใช้ session เดิมต่อ
 - `/logout/control` ตรวจ signed notification จาก C (`control_logout`) หรือ Keycloak (`idp_logout`) ล้างเฉพาะ SSO sessions ตามขอบเขตของ notification และแจ้งแท็บผ่าน SSE
 - Logout ปกติออกเฉพาะระบบนี้ Sessions จาก Login ไม่ถูกล้างจาก Logout C
+
+กำหนดรอบใน `.env` ด้วย `APP_A_HEARTBEAT_INTERVAL_SECONDS` และ `APP_B_HEARTBEAT_INTERVAL_SECONDS` หน่วยวินาที ค่าเริ่มต้น 120 Browser และ Backend ใช้ค่าเดียวกันของแต่ละแอป หลังแก้ให้ recreate container A/B และรีเฟรชหน้าเว็บ อ่าน [ขั้นตอนตั้งค่า](../docs/keycloak/SETUP-GUIDE.md#ตั้งรอบ-heartbeat-ab-ผ่าน-env)
 
 Token ของระบบจาก Login อายุ 1 ชั่วโมง ส่วน SSO app token ไม่เกินอายุ token กลาง การเรียก `/revoke` ต้องใช้ authority C; A/B ใช้ credentials ของตัวเองได้เฉพาะ introspection ใน flow นี้
 

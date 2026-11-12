@@ -12,7 +12,6 @@
     inFlight = false,
     leaving = false,
     failedNotified = false;
-  const waiting = "กำลังสร้าง SSO session กรุณารอสักครู่";
   const failed = "ไม่สามารถสร้าง SSO session ได้ กรุณาลองเชื่อมต่อใหม่หรือติดต่อผู้ดูแลระบบ";
   function show(text) {
     message.textContent = text;
@@ -68,27 +67,6 @@
         setTimeout(poll, state.status === "checking" ? 1000 : 10000);
       }
     }
-  }
-  document.querySelectorAll("[data-system-link]").forEach((link) =>
-    link.addEventListener("click", async (event) => {
-      event.preventDefault();
-      try {
-        await refresh();
-        if (leaving) {
-          return;
-        }
-        if (state.status === "success") {
-          window.location.assign(link.href);
-          return;
-        }
-        show(state.message || (state.status === "checking" ? waiting : failed));
-      } catch {
-        show("ตรวจสอบสถานะ SSO ไม่ได้ กรุณาลองใหม่หรือติดต่อผู้ดูแลระบบ");
-      }
-    }),
-  );
-  if (panel.dataset.notice === "1") {
-    show(state.message || (state.status === "checking" ? waiting : failed));
   }
   poll();
 })();

@@ -123,6 +123,7 @@ async function createRoutes() {
   router.get("/", requireAuthentication, (req, res) => {
     res.render("home", {
       authMode: req.authMode || "sso",
+      heartbeatIntervalMs: config.heartbeatIntervalMs,
       appTokenIssued: !!(req.session.local?.appToken || req.session.sso?.appToken),
       centralTokenIssued: !!req.session.sso?.accessToken,
       email: req.localUser?.email || req.centralUser.email,

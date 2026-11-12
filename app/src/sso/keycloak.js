@@ -238,6 +238,9 @@ async function rejectSession(req, res, reason, { showModal = false } = {}) {
     if (showModal) {
       req.session.accessDenied = { explicit: true, reason };
     }
+  } else if (reason === "verification-unavailable") {
+    req.session.connectionError = true;
+    req.session.ssoUnavailable = true;
   } else {
     req.session.loginNotice = "session-expired";
   }
@@ -276,7 +279,7 @@ async function requireSso(req, res, next) {
     if (
       req.path === "/session/heartbeat" ||
       !req.session.sso.checkedAt ||
-      Date.now() - req.session.sso.checkedAt >= 3600000
+      Date.now() - req.session.sso.checkedAt >= config.heartbeatIntervalMs
     ) {
       let response;
       try {
@@ -294,10 +297,8 @@ async function requireSso(req, res, next) {
           throw new Error("Keycloak unavailable");
         }
       } catch {
-        if (req.path === "/session/heartbeat") {
-          return res.status(503).json({ authenticated: false, reason: "verification-unavailable" });
-        }
-        return res.status(503).send("Cannot verify SSO now. Please retry.");
+        // Verification failure ends this application SSO session immediately.
+        return await rejectSession(req, res, "verification-unavailable");
       }
       const status = await response.json();
       if (!status.active) {
@@ -329,7 +330,7 @@ function heartbeat(req, res) {
     authenticated: true,
     expiresAt: req.centralUser.exp * 1000,
     remainingMs: Math.max(0, req.centralUser.exp * 1000 - Date.now()),
-    intervalMs: 3600000,
+    intervalMs: config.heartbeatIntervalMs,
   });
 }
 

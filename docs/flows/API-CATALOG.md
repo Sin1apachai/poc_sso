@@ -6,26 +6,26 @@
 
 ## A/B — 14 routes ต่อระบบ
 
-| Method/path                  | หน้าที่                                                                   |
-| ---------------------------- | ------------------------------------------------------------------------- |
-| `GET /health`                | ตรวจฐานข้อมูลและสถานะระบบ                                                 |
-| `GET /login/local`           | กลับ Login โดยไม่เริ่ม silent SSO ซ้ำ                                     |
-| `GET /login`                 | หน้า Login และ modal ที่แจ้งเพียงครั้งเดียว; ครั้งแรกอาจ silent check     |
-| `POST /login`                | ตรวจรหัสผ่านของระบบ สร้าง app token/session                               |
-| `GET /sso`                   | ตรวจพร้อมแล้วเปิดคำขอ SSO C                                               |
-| `POST /sso/preflight`        | ปุ่ม SSO ตรวจพร้อมและส่ง URL C กลับเป็น JSON                              |
-| `GET /sso/connectivity`      | อ่านความคืบหน้า retry ระหว่างกด SSO                                       |
-| `GET /sso/callback`          | รับ error พร้อม state จาก C/หน้าส่งต่อ                                    |
-| `POST /sso/callback`         | รับ JWT จาก Keycloak ตรวจ binding/สิทธิ์/บัญชี และสร้าง app session       |
-| `GET /session/logout-events` | SSE สำหรับแจ้ง SSO logout โดยไม่ polling เพิ่ม                            |
-| `GET /session/heartbeat`     | ตรวจ session จาก Login หรือ SSO; SSO ใช้ custom introspection ตามเงื่อนไข |
-| `POST /logout/control`       | รับ signed logout จาก C หรือ Keycloak ล้าง SSO ตามขอบเขต notification     |
-| `GET /`                      | หน้าหลักที่ตรวจ authentication                                            |
-| `POST /logout`               | ออกเฉพาะระบบนี้ ตรวจ CSRF และล้าง cookie/session                          |
+| Method/path                  | หน้าที่                                                                                   |
+| ---------------------------- | ----------------------------------------------------------------------------------------- |
+| `GET /health`                | ตรวจฐานข้อมูลและสถานะระบบ                                                                 |
+| `GET /login/local`           | กลับ Login โดยไม่เริ่ม silent SSO ซ้ำ                                                     |
+| `GET /login`                 | หน้า Login และ modal ที่แจ้งเพียงครั้งเดียว; ครั้งแรกอาจ silent check                     |
+| `POST /login`                | ตรวจรหัสผ่านของระบบ สร้าง app token/session                                               |
+| `GET /sso`                   | ตรวจพร้อมแล้วเปิดคำขอ SSO C                                                               |
+| `POST /sso/preflight`        | ปุ่ม SSO ตรวจพร้อมและส่ง URL C กลับเป็น JSON                                              |
+| `GET /sso/connectivity`      | อ่านความคืบหน้า retry ระหว่างกด SSO                                                       |
+| `GET /sso/callback`          | รับ error พร้อม state จาก C/หน้าส่งต่อ                                                    |
+| `POST /sso/callback`         | รับ JWT จาก Keycloak ตรวจ binding/สิทธิ์/บัญชี และสร้าง app session                       |
+| `GET /session/logout-events` | SSE สำหรับแจ้ง SSO logout โดยไม่ polling เพิ่ม                                            |
+| `GET /session/heartbeat`     | ตรวจ session; SSO ตรวจ token กับ Keycloak และล้าง session พร้อมตอบ 401 หากตรวจสถานะไม่ได้ |
+| `POST /logout/control`       | รับ signed logout จาก C หรือ Keycloak ล้าง SSO ตามขอบเขต notification                     |
+| `GET /`                      | หน้าหลักที่ตรวจ authentication                                                            |
+| `POST /logout`               | ออกเฉพาะระบบนี้ ตรวจ CSRF และล้าง cookie/session                                          |
 
 A/B ใช้โค้ดเดียวกัน รวม **28 routes** Script `/sso-complete.js` เป็น static asset ส่งเพียงสัญญาณสำเร็จไปหน้าส่งต่อ ไม่ส่ง token
 
-## C — 16 routes
+## C — 15 routes
 
 | Method/path              | หน้าที่                                                                                        |
 | ------------------------ | ---------------------------------------------------------------------------------------------- |
@@ -38,7 +38,6 @@ A/B ใช้โค้ดเดียวกัน รวม **28 routes** Script
 | `POST /logout`           | ปิดต้นทาง ขอ Keycloak ยกเลิก token แจ้งตาม Logout URLs แล้วล้าง session C                      |
 | `POST /sso/retry`        | ขอ token กลาง C ใหม่สูงสุด 3 ครั้ง                                                             |
 | `GET /sso/status`        | แจ้งความพร้อม SSO และเวลาหมดอายุ โดยไม่ส่ง token ให้หน้าเว็บ                                   |
-| `GET /connect/:system`   | ตรวจสิทธิ์และความพร้อม ก่อน redirect ไป SSO ของแอป                                             |
 | `GET /session/heartbeat` | ตรวจ session Login ของ C                                                                       |
 | `GET /`                  | dashboard C และลิงก์ A/B                                                                       |
 | `GET /users`             | หน้าจัดการบัญชีและสิทธิ์ เฉพาะ admin                                                           |
@@ -46,7 +45,7 @@ A/B ใช้โค้ดเดียวกัน รวม **28 routes** Script
 | `POST /users/:id`        | แก้บัญชี/สิทธิ์ แล้ว revoke และแจ้งตาม Logout URLs                                             |
 | `POST /users/:id/delete` | ปิดบัญชี revoke/แจ้งตาม Logout URLs แล้วลบ user C                                              |
 
-รวม A/B/C **44 routes** รวม HTML, JSON, callback และ SSE ไม่ใช่ JSON APIs ทั้งหมด
+รวม A/B/C **43 routes** รวม HTML, JSON, callback และ SSE ไม่ใช่ JSON APIs ทั้งหมด
 
 ## Keycloak runtime — 8 endpoints
 
@@ -129,7 +128,7 @@ JWKS เป็น public key ไม่ใช่ Client Secret C ไม่ต้�
 
 F03 browser requests: POST A/B preflight → GET C authorize → POST C login → POST K authorize → POST A/B callback → GET A/B home ระหว่าง C login มี **backend POST bootstrap ภายใน POST login** ไม่ใช่ browser redirect เพิ่ม
 
-Script ส่งต่อ 3 เส้น: C sso-post.js, Keycloak submit.js และ A/B sso-complete.js กดลิงก์จาก C เพิ่ม GET /connect/:system หนึ่งครั้ง
+Script ส่งต่อ 3 เส้น: C sso-post.js, Keycloak submit.js และ A/B sso-complete.js ลิงก์ A/B ใน C ไปที่ `/sso` ของแอปปลายทางโดยตรง ไม่มีคำขอ `/connect` หรือการตรวจสถานะก่อนเปลี่ยนหน้า
 
 **Login C โดยตรง** มี POST C login และ GET dashboard แล้ว polling /sso/status ตาม UI; C เริ่ม POST bootstrap ทันที ปกติ 1 request และ retry สูงสุด 3 เมื่อ error ชั่วคราว สถานะสำเร็จอ้างอิงผลการได้รับและตรวจ token
 
@@ -148,6 +147,8 @@ C รับ token กลางจาก bootstrap จากนั้น browser 
 | Keycloak ล่ม               | preflight สูงสุด 3           | silent 1; ไม่ retry proof เดิมอัตโนมัติ                                     |
 
 N คือจำนวน Logout URLs ที่บันทึกไว้ใน Realm settings → Sessions → Logout เมื่อเอา URL ออกแล้ว Save จะไม่ส่ง notification ไปปลายทางนั้น แต่ token กลางยังถูก revoke ตามเดิม
+
+รอบ heartbeat ของ A/B อ่านจาก `APP_A_HEARTBEAT_INTERVAL_SECONDS` / `APP_B_HEARTBEAT_INTERVAL_SECONDS` ใน `.env` ค่าเริ่มต้น 120 วินาที แต่ละแอปใช้ค่าเดียวกันกับ Browser และ Backend ผลตอบกลับ `/session/heartbeat` ของ SSO มี `intervalMs` ตามค่านั้น ค่าเวลานี้แยกจาก heartbeat Keycloak → C
 
 ## Setup และตรวจผล ไม่ใช่ Login runtime
 

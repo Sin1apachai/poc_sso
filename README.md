@@ -65,7 +65,7 @@ printf '%s' 'admin-b-demo' | docker compose exec -T app-b node src/create-user.j
 - เปิดแอปเพิ่มผ่าน SSO ใช้ token กลางใบเดิมและไม่เริ่มนับอายุใหม่
 - Logout A/B ออกเฉพาะระบบนั้น ส่วน Logout C ยกเลิก token ของผู้ใช้และแจ้งปลายทางตาม Realm settings → Sessions → Logout ให้ออกจาก SSO การลบ URL แล้ว Save หยุดการแจ้งทันที แต่แอปนั้นยังตรวจพบ token ถูก revoke จาก heartbeat ได้
 - Keycloak ตรวจ C ตามรอบปกติ และใช้ระยะห่างยืนยันซ้ำเมื่อพบปัญหา ตั้งจำนวนครั้ง เวลาทั้งสอง และเลือก IdP ได้ใน Realm settings → Heartbeat ส่วน Health Check URL ตั้งใน Identity providers → Settings หาก C ขัดข้องครบเกณฑ์ จะยกเลิก token และแจ้งแอปโดยตรง
-- เมื่อ Keycloak ติดต่อไม่ได้ ระบบแจ้งข้อผิดพลาด ส่วน Login ด้วยบัญชีของ A/B ยังคงใช้ได้
+- เมื่อถึงรอบตรวจแล้ว Keycloak ติดต่อไม่ได้ A/B ล้าง session SSO และกลับ Login พร้อมแจ้งข้อผิดพลาด ส่วน Login ด้วยบัญชีของ A/B เองยังคงใช้ได้
 
 **Clients ยังใช้ใน Login SSO** สำหรับยืนยันแอปและตรวจ handoff แต่ Client scopes ของ A/B/C ว่าง เพราะส่วนขยายสร้าง claims เอง การไม่ระบุ Client ID ใน Logout URLs ไม่ได้ยกเลิก Clients ของ Login
 
@@ -75,7 +75,7 @@ printf '%s' 'admin-b-demo' | docker compose exec -T app-b node src/create-user.j
 
 บัญชีและ session ของ A/B/C อยู่ PostgreSQL แยกฐานข้อมูล ส่วน Keycloak ใช้ H2 ใน volume keycloak_data เก็บการตั้งค่าและกุญแจ ตัวตนกับสถานะ token กลางอยู่ใน cache ชั่วคราวของส่วนขยาย
 
-Session จาก Login ด้วยบัญชีของแต่ละระบบมีอายุสูงสุด 1 ชั่วโมง ส่วน session SSO ของ A/B ใช้ได้ไม่เกิน token กลาง ปกติ 15 นาที ไม่มี refresh token Browser ตรวจ session SSO ทุก 1 ชั่วโมง และระบบตรวจอายุ token เมื่อมีคำขอใช้งาน
+Session จาก Login ด้วยบัญชีของแต่ละระบบมีอายุสูงสุด 1 ชั่วโมง ส่วน session SSO ของ A/B ใช้ได้ไม่เกิน token กลาง ปกติ 15 นาที ไม่มี refresh token Browser ตรวจ session SSO ตาม `.env` ของแต่ละแอป ค่าเริ่มต้นทุก 2 นาที และระบบตรวจอายุ token เมื่อมีคำขอใช้งาน กำหนดแยกด้วย `APP_A_HEARTBEAT_INTERVAL_SECONDS` / `APP_B_HEARTBEAT_INTERVAL_SECONDS` ดู [ขั้นตอนตั้งรอบ heartbeat](docs/keycloak/SETUP-GUIDE.md#ตั้งรอบ-heartbeat-ab-ผ่าน-env)
 
 Token ของแอปและ token กลางเก็บฝั่ง server Browser ถือ cookie อ้างอิง session A/B เก็บ token กลางที่ `public.session` → JSON `sess.sso.accessToken` ในฐานข้อมูลของตัวเอง ดู [วิธีเชื่อม PostgreSQL และ query token](docs/keycloak/SETUP-GUIDE.md#เชื่อม-postgresql-และหา-token-ที่-ab-เก็บไว้) รายละเอียด session อยู่ใน [อายุ session และ cookies](docs/keycloak/SETUP-GUIDE.md#อายุ-session-cookies-และแหล่งเก็บข้อมูล)
 
@@ -102,7 +102,7 @@ npm run test:session-logout
 
 เพิ่ม/ลบปลายทาง logout ได้ที่ **Realm settings → Sessions → Logout** ด้วย Logout URL แล้วใช้ Save/Revert ชุดเดิม อ่าน [คู่มือ](docs/keycloak/SETUP-GUIDE.md) และ [ผลทดสอบ Sessions / Logout](docs/keycloak/SESSION-LOGOUT-TEST-RESULTS.json)
 
-Integration tests ใช้บริการจริงใน Compose โดยหยุด/เปิด Keycloak หรือ C ตามกรณีทดสอบ เตรียม Logout URLs ของ A/B/C ชั่วคราวตามกรณี แล้วคืนรายการ URL และค่าที่เปลี่ยนหลังจบ การทดสอบรอบเวลาเร่งจากฝั่ง test ไม่ได้รอหนึ่งชั่วโมงจริง ใช้กับสภาพแวดล้อมทดสอบและบัญชีตัวอย่างนี้
+Integration tests ใช้บริการจริงใน Compose โดยหยุด/เปิด Keycloak หรือ C ตามกรณีทดสอบ เตรียม Logout URLs ของ A/B/C ชั่วคราวตามกรณี แล้วคืนรายการ URL และค่าที่เปลี่ยนหลังจบ การทดสอบรอบเวลาเร่งจากฝั่ง test ไม่ได้รอครบรอบ heartbeat จริง ใช้กับสภาพแวดล้อมทดสอบและบัญชีตัวอย่างนี้
 
 ## โครงสร้าง
 

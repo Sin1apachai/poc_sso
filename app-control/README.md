@@ -13,6 +13,8 @@ C ตรวจรหัสผ่าน มี session ของตัวเอ�
 
 `POST /logout/keycloak` รับ signed `idp_logout` จาก Keycloak เพื่อล้างสถานะ token กลางเก่าหลัง C ฟื้นตัว และรับ `control_logout` ที่ C ลงลายเซ็นเองเพื่อล้างเฉพาะผู้ใช้ที่ระบุ ทั้งสองแบบตรวจ audience กลุ่ม SSO และคง Login C ไว้ ส่วนปุ่ม Logout C จะ revoke token แจ้งปลายทาง และล้าง session C ของคำขอนี้
 
+ปุ่มเข้าสู่ A/B ใน dashboard เป็นลิงก์ตรงไป `/sso` ของ A/B แสดงทั้งสองระบบโดยไม่ซ่อนตามสิทธิ์และไม่รอการตรวจสถานะ SSO ของหน้า C ก่อนเปลี่ยนหน้า การตรวจ token สิทธิ์ และบัญชีของแอปปลายทางอยู่ในกระบวนการ SSO ที่ A/B เริ่ม ส่วน C ยังคงยืนยันตัวตนและให้ข้อมูลสิทธิ์ในฐานะ IdP
+
 C เก็บ token กลางใน `app_control.public.central_sso_status.access_token` ไม่ใช่ `session.sess.sso.accessToken` แบบ A/B โดยยังใช้ Client ID/Secret ของ authority สำหรับ bootstrap/revoke และไม่ใช้ Client scopes เพื่อสร้าง claims
 
 Token จาก Login C อายุ 1 ชั่วโมง การหมดอายุ session จาก Login เพียงอย่างเดียวไม่ได้ส่ง global logout และ heartbeat ของ Keycloak ตรวจความพร้อมบริการ C ไม่ได้ตรวจ session ผู้ใช้รายคน

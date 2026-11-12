@@ -196,23 +196,6 @@ async function createRoutes() {
   r.get("/sso/status", loginRequired, (req, res) =>
     res.json({ ...ssoStatus.publicStatus(res.locals.ssoState), csrf: res.locals.csrf }),
   );
-  r.get("/connect/:system", loginRequired, (req, res) => {
-    const targets = {
-      "app-a": { allowed: req.user.allow_a, url: "http://localhost:4001/sso" },
-      "app-b": { allowed: req.user.allow_b, url: "http://localhost:4002/sso" },
-    };
-    const target = targets[req.params.system];
-    if (!target) {
-      return res.sendStatus(404);
-    }
-    if (!target.allowed) {
-      return res.sendStatus(403);
-    }
-    if (res.locals.ssoState.status !== "success") {
-      return res.redirect("/?ssoNotice=1");
-    }
-    res.redirect(target.url);
-  });
   r.get("/session/heartbeat", loginRequired, (req, res) =>
     res.json({ authenticated: true, mode: "local", expiresAt: req.session.local.expiresAt }),
   );
@@ -224,9 +207,7 @@ async function createRoutes() {
     }
     next();
   }
-  r.get("/", loginRequired, (req, res) =>
-    res.render("dashboard", { user: req.user, showSsoNotice: req.query.ssoNotice === "1" }),
-  );
+  r.get("/", loginRequired, (req, res) => res.render("dashboard", { user: req.user }));
   r.get("/users", loginRequired, adminRequired, async (req, res) => {
     const { rows } = await pool.query(
       "SELECT id,username,email,is_admin,enabled,allow_a,allow_b,allow_a_write,allow_a_delete,allow_b_write,allow_b_delete FROM users ORDER BY id",

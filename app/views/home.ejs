@@ -8,7 +8,7 @@
   </head>
   <body>
     <% if(authMode === "sso"){ %>
-    <script src="/heartbeat.js" defer></script>
+    <script src="/heartbeat.js" data-interval-ms="<%= heartbeatIntervalMs %>" defer></script>
     <% } %>
     <main>
       <small><%= systemId %> · <%= authMode === "local" ? "LOCAL LOGIN" : "CENTRAL SSO" %></small>
